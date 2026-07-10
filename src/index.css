@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    /* Business-application theme (CGOPS Platform Design System): white
+       background, black typography. */
+    @apply bg-surface text-charcoal;
+  }
+  /* Clear focus states — accessibility per the design system. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-cg-orange ring-offset-1;
+  }
+}
