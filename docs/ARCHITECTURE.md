@@ -72,18 +72,27 @@ Center person link arrives with the readiness integration (§6).
 
 ## 3. Permissions
 
-`src/permissions/index.ts` is the one place role → capability is decided; RLS
-is the real enforcement layer and the truth table here mirrors it:
+The **database** decides capability (the `restaurant_center_can_manage()`
+helper) and returns it to the frontend as `is_admin` / `can_manage` booleans;
+`src/permissions/index.ts` just mirrors them so the UI and RLS agree. No CGOPS
+role strings are hardcoded in the frontend.
 
-| Role | View | Create / edit | Delete |
+The CGOPS master `public.user_profiles.role` is a free-form platform value
+(observed today: `admin`, `HQ`, `Executive Chef`, `Chef de Cuisine`). The
+Phase 1 mapping:
+
+| CGOPS role | View | Create / edit | Delete |
 | --- | --- | --- | --- |
 | `admin` | ✓ | ✓ | ✓ |
-| `executive`, `regional_leader` (**managers**) | ✓ | ✓ | — |
-| `location_leader`, `viewer` | ✓ | — | — |
+| `HQ` (**manager tier**) | ✓ | ✓ | — |
+| anything else (e.g. job-title roles) | ✓ | — | — |
 
-Any authenticated CGOPS user may **read** opening data. Initial real write
-access is expected to be HQ + selected regional leadership, granted through
-**CGOPS roles — never hardcoded emails**.
+Any authenticated CGOPS user may **read** opening data. The manager allow-list
+(`admin`, `HQ`) is a single documented array in
+`restaurant_center_can_manage()` — when CGOPS adds a distinct
+regional-leadership role value, add it there (one line) and both the app and
+RLS pick it up. Access is granted through **CGOPS roles — never hardcoded
+emails**. See migration `20260710180000_role_mapping_and_profile_flags.sql`.
 
 ## 4. Data model
 

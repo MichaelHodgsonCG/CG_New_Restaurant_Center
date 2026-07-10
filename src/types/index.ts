@@ -4,26 +4,21 @@
 
 // --- Identity ------------------------------------------------------------
 
-// Platform roles come from the CGOPS master profile (public.user_profiles).
-// New Restaurant Center never stores its own copy of a person's role — it
-// resolves this through restaurant_center_current_profile() (see
-// src/features/auth/useSession.ts) and keeps the same five-role vocabulary
-// as the rest of the platform.
-export const APP_ROLES = [
-  'admin',
-  'executive',
-  'regional_leader',
-  'location_leader',
-  'viewer',
-] as const
-export type AppRole = (typeof APP_ROLES)[number]
-
+// Identity comes from the CGOPS master profile (public.user_profiles). New
+// Restaurant Center never stores its own copy of a person's role — it resolves
+// everything through restaurant_center_current_profile() (see
+// src/features/auth/useSession.ts). The CGOPS `role` is a free-form platform
+// value (e.g. 'admin', 'HQ', 'Executive Chef'), so we keep it as a raw string
+// for display and let the DATABASE decide capability via the is_admin /
+// can_manage booleans it returns — the frontend never hardcodes the role
+// vocabulary.
 export interface Profile {
-  role: AppRole
+  role: string
   email: string | null
   display_name: string | null
   person_id: string | null
   is_admin: boolean
+  can_manage: boolean
 }
 
 // --- Anchors & offsets ---------------------------------------------------

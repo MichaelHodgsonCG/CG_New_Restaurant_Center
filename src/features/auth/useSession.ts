@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../../lib/supabase'
 import { consumeCgopsSsoHandoff } from './cgopsSso'
-import { APP_ROLES, type AppRole, type Profile } from '../../types'
+import type { Profile } from '../../types'
 
 // Session + CGOPS profile in one hook. Role detection reads the CGOPS master
 // profile (public.user_profiles) through ONE call — the SECURITY DEFINER RPC
@@ -72,23 +72,18 @@ function normalizeProfile(
     display_name?: string | null
     person_id?: string | null
     is_admin?: boolean | null
+    can_manage?: boolean | null
   } | null,
   session: Session,
 ): Profile {
-  const role = coerceRole(row?.role)
   return {
-    role,
+    role: row?.role ?? 'viewer',
     email: row?.email ?? session.user.email ?? null,
     display_name: row?.display_name ?? session.user.email ?? null,
     person_id: row?.person_id ?? null,
-    is_admin: row?.is_admin ?? role === 'admin',
+    is_admin: row?.is_admin ?? false,
+    can_manage: row?.can_manage ?? false,
   }
-}
-
-function coerceRole(role: string | null | undefined): AppRole {
-  return (APP_ROLES as readonly string[]).includes(role ?? '')
-    ? (role as AppRole)
-    : 'viewer'
 }
 
 export async function signOut() {
