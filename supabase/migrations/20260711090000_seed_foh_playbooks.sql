@@ -4,27 +4,19 @@
 -- checklists (FOH Manager Pre-Open Accountabilities, July 2026) and the BT
 -- Richmond Hill opening training schedule.
 --
--- ⚠ Apply to the CGOPS Platform Supabase project.
+-- Apply to the CGOPS Platform Supabase project.
 --
--- Design notes:
---   * Adds opening_task_templates.category to preserve the source phase
---     grouping (Hiring, Restaurant Set-Up, Training, Dry Runs, Uniforms, …).
---   * Site-specific dates from the source (Nov 2026, Richmond Hill) are NOT
---     stored — each phase maps to a REUSABLE relative offset so the templates
---     work for every opening. Offset convention: negative = before anchor,
---     positive = after. Calibrated to the Richmond Hill calendar
---     (handover = opening -19; setup begins at handover; training ~ opening -12;
---     dry runs = opening -3). Phases with no clear timing default to opening +0
---     and should be tuned by HQ.
---   * Indented sub-items are folded into each task's description.
---   * Idempotent: re-running REPLACES the templates for these six playbooks
---     (delete + re-insert), so it is safe to re-run after the source changes.
---     NOTE: this clears any hand-added templates on these playbooks.
+-- Offsets are REUSABLE relative offsets (negative = before anchor, positive =
+-- after); site-specific dates are not stored. Sub-items folded into the
+-- description. Adds opening_task_templates.category for the source phase.
+-- Idempotent: replaces templates for these six playbooks on re-run.
+-- Data note: task text had ; and " characters removed for SQL-editor safety.
 -- ============================================================================
 
 alter table public.opening_task_templates add column if not exists category text;
 
--- ---- General Manager Playbook : 84 templates ------------------------------
+
+-- ---- General Manager Playbook : 84 templates -----------------------------
 insert into public.opening_playbooks (name, role_key, department_key, description, sort_order)
 select 'General Manager Playbook', 'general_manager', 'management', 'Pre-opening accountabilities for the General Manager role (imported from operational checklists).', 10
 where not exists (select 1 from public.opening_playbooks where name = 'General Manager Playbook');
@@ -59,9 +51,9 @@ from public.opening_playbooks p, (values
   ('Follow up & assist BM, SM & GSM regarding their restaurant set up checklists', null, 'Restaurant Set Up', 'handover_date', 2, 'General Manager', 23),
   ('Order paper: harvey@directlinesupplies.com', null, 'Restaurant Set Up', 'handover_date', 2, 'General Manager', 24),
   ('Set up bookmarks on Google Chrome for all team sessions', null, 'Restaurant Set Up', 'handover_date', 2, 'General Manager', 25),
-  ('JHSC board set up; see Axonify for required documents (green book given by HQ) (certified TMs determined @ job fair)', null, 'Restaurant Set Up', 'handover_date', 2, 'General Manager', 26),
+  ('JHSC board set up, see Axonify for required documents (green book given by HQ) (certified TMs determined @ job fair)', null, 'Restaurant Set Up', 'handover_date', 2, 'General Manager', 26),
   ('Program lighting schedule', null, 'Restaurant Set Up', 'handover_date', 2, 'General Manager', 27),
-  ('FOH accountabilities completed and posted; BOH accountabilities completed and posted', null, 'Restaurant Set Up', 'handover_date', 2, 'General Manager', 28),
+  ('FOH accountabilities completed and posted, BOH accountabilities completed and posted', null, 'Restaurant Set Up', 'handover_date', 2, 'General Manager', 28),
   ('Follow up with binder set up (host binder, bar bible, incident report binder)', null, 'Restaurant Set Up', 'handover_date', 2, 'General Manager', 29),
   ('Follow up on duties being completed/accurate and posted (BOH, host, server, bar)', null, 'Restaurant Set Up', 'handover_date', 2, 'General Manager', 30),
   ('Study in detail all facets of training to understand schedule and who will be leading which seminars', null, 'Training', 'opening_date', -12, 'General Manager', 31),
@@ -120,7 +112,7 @@ from public.opening_playbooks p, (values
 ) as v(title, description, category, anchor_type, offset_days, owner, seq)
 where p.name = 'General Manager Playbook';
 
--- ---- Beverage Manager Playbook : 61 templates -----------------------------
+-- ---- Beverage Manager Playbook : 61 templates ----------------------------
 insert into public.opening_playbooks (name, role_key, department_key, description, sort_order)
 select 'Beverage Manager Playbook', 'beverage_manager', 'bar', 'Pre-opening accountabilities for the Beverage Manager role (imported from operational checklists).', 10
 where not exists (select 1 from public.opening_playbooks where name = 'Beverage Manager Playbook');
@@ -148,7 +140,7 @@ from public.opening_playbooks p, (values
   ('All Bev Specs & standards are reviewed & tests passed to 100%', null, 'Beverage Playbook & Specs', 'opening_date', -10, 'Beverage Manager', 16),
   ('Untapped downloaded and store account accesible', null, 'Beverage Playbook & Specs', 'opening_date', -10, 'Beverage Manager', 17),
   ('Organize OC inventory pages >>> Costumize Sort vs. Countsheet Setup vs. Manage Locations', null, 'Storage & Organization', 'handover_date', 2, 'Beverage Manager', 18),
-  ('Set up bar and storage areas to the highest standard including labelling/maps:', '• Includes all shelving, bar fridges, coolers, keg fridge and storage areas  • Spirits in back bar/ storage areas organized via category  • Beer Wall (display and behind bar) stocked alphbetaically  • Bar top & Bar expo areas.  • POD organization: "Empties Return", rotational vs. static glassware, coasters, bar smallwares  • Identify ''key hires'' to assist with this  • Cocktail Cheat Sheet & Garnish chart laminated & posted by service  • Keg Fridge Cleanliness Checklist laminated & posted  • Beer Clean Glassware Laminated & posted  • How to use a Coupler laminated & posted  • Types of Couplers Laminted & posted  • Draught Beer list laminted and posted in draught beer fridge  • Proper Keg Fridge Storage laminated & posted  • Chalkboards filled out neatly behind bar and around restaurants  • Photos should be taken & shared of any area/bar top to train & re-inforce standards', 'Storage & Organization', 'handover_date', 2, 'Beverage Manager', 19),
+  ('Set up bar and storage areas to the highest standard including labelling/maps:', '• Includes all shelving, bar fridges, coolers, keg fridge and storage areas  • Spirits in back bar/ storage areas organized via category  • Beer Wall (display and behind bar) stocked alphbetaically  • Bar top & Bar expo areas.  • POD organization: Empties Return, rotational vs. static glassware, coasters, bar smallwares  • Identify ''key hires'' to assist with this  • Cocktail Cheat Sheet & Garnish chart laminated & posted by service  • Keg Fridge Cleanliness Checklist laminated & posted  • Beer Clean Glassware Laminated & posted  • How to use a Coupler laminated & posted  • Types of Couplers Laminted & posted  • Draught Beer list laminted and posted in draught beer fridge  • Proper Keg Fridge Storage laminated & posted  • Chalkboards filled out neatly behind bar and around restaurants  • Photos should be taken & shared of any area/bar top to train & re-inforce standards', 'Storage & Organization', 'handover_date', 2, 'Beverage Manager', 19),
   ('Assist in execution of beverage seminars', null, 'Beverage & Bartender Training', 'opening_date', -12, 'Beverage Manager', 20),
   ('Assist TM''s during training with coaching, learning, questions and testing. Highlight those who may stand out', null, 'Beverage & Bartender Training', 'opening_date', -12, 'Beverage Manager', 21),
   ('Activate utilization of TTT document for bartenders, managers, and supervisors in training', null, 'Beverage & Bartender Training', 'opening_date', -12, 'Beverage Manager', 22),
@@ -181,7 +173,7 @@ from public.opening_playbooks p, (values
   ('You will be 100% stocked, 100% of the time.', null, 'Schedules', 'opening_date', 0, 'Beverage Manager', 49),
   ('Order guides are printed & laminated for all bev purchasing (wine, LCBO, TBS, static bottles & cans)', null, 'Order Templates/ Guides', 'opening_date', -5, 'Beverage Manager', 50),
   ('Sysco order guide assemble that is sequetial with storage areas', null, 'Order Templates/ Guides', 'opening_date', -5, 'Beverage Manager', 51),
-  ('Created a "Favourites" template on Beer4Buisness by first week open', null, 'Order Templates/ Guides', 'opening_date', -5, 'Beverage Manager', 52),
+  ('Created a Favourites template on Beer4Buisness by first week open', null, 'Order Templates/ Guides', 'opening_date', -5, 'Beverage Manager', 52),
   ('Create a Beverage Receiving log (includes delivery schedule)', null, 'Order Templates/ Guides', 'opening_date', -5, 'Beverage Manager', 53),
   ('Login Credentials', null, 'Order Templates/ Guides', 'opening_date', -5, 'Beverage Manager', 54),
   ('TBS, LCBO, Silverware, OC, Untapped', null, 'Order Templates/ Guides', 'opening_date', -5, 'Beverage Manager', 55),
@@ -193,7 +185,7 @@ from public.opening_playbooks p, (values
 ) as v(title, description, category, anchor_type, offset_days, owner, seq)
 where p.name = 'Beverage Manager Playbook';
 
--- ---- Service Manager Playbook : 44 templates ------------------------------
+-- ---- Service Manager Playbook : 44 templates -----------------------------
 insert into public.opening_playbooks (name, role_key, department_key, description, sort_order)
 select 'Service Manager Playbook', 'service_manager', 'front_of_house', 'Pre-opening accountabilities for the Service Manager role (imported from operational checklists).', 10
 where not exists (select 1 from public.opening_playbooks where name = 'Service Manager Playbook');
@@ -216,10 +208,10 @@ from public.opening_playbooks p, (values
   ('Should a TM be hired after the Silverware data dump, you will enter them into Silverware manually', null, 'TMs in Silverware', 'handover_date', 3, 'Service Manager', 11),
   ('Identify key TMs to help stock & set up dining room', '• Salt, pepper, vinegar, oil all filled  • Cutlery polished and rolled  • Side plates polished  • Butcher paper cut, side plates/fry cups/burger trays lined  • Sticker bill clipboards & stuff bill clipboards (postcard, comment card)  • Rubber feet on cubes', 'Restaurant Set Up', 'handover_date', 2, 'Service Manager', 12),
   ('Determine location for Push tablet and set up Push tablet', null, 'Restaurant Set Up', 'handover_date', 2, 'Service Manager', 13),
-  ('Set up side stands; determine location for dessert menus, billing supplies; create and laminate side stand map', null, 'Restaurant Set Up', 'handover_date', 2, 'Service Manager', 14),
+  ('Set up side stands, determine location for dessert menus, billing supplies, create and laminate side stand map', null, 'Restaurant Set Up', 'handover_date', 2, 'Service Manager', 14),
   ('Determine location for sani buckets and cloths (in-use and back up)', null, 'Restaurant Set Up', 'handover_date', 2, 'Service Manager', 15),
   ('Determine location for back up straws', null, 'Restaurant Set Up', 'handover_date', 2, 'Service Manager', 16),
-  ('Set up FOH documents; Determine location for section boards, side duty/running duties, FOTW, pre shift notes)', null, 'Restaurant Set Up', 'handover_date', 2, 'Service Manager', 17),
+  ('Set up FOH documents, Determine location for section boards, side duty/running duties, FOTW, pre shift notes)', null, 'Restaurant Set Up', 'handover_date', 2, 'Service Manager', 17),
   ('Post a copy of the floor plan at the out door for food running reference', null, 'Restaurant Set Up', 'handover_date', 2, 'Service Manager', 18),
   ('Post Allergy and Nutritional Guide in Expo', null, 'Restaurant Set Up', 'handover_date', 2, 'Service Manager', 19),
   ('Post Red Light/Green Light at/near drink expo', null, 'Restaurant Set Up', 'handover_date', 2, 'Service Manager', 20),
@@ -230,7 +222,7 @@ from public.opening_playbooks p, (values
   ('Complete audit of duties & checklists to ensure they are specific for your location', '• Server: Opening & Closing duties  • Server: Running Duties  • Server: Cleaning Schedule: Daily/Weekly/Monthly', 'Checklists & Documents for Server Portfolios', 'handover_date', 2, 'Service Manager', 25),
   ('Set up FOTW chart with names for all FOH', null, 'Checklists & Documents for Server Portfolios', 'handover_date', 2, 'Service Manager', 26),
   ('Prepare FOTW for first 8 weeks (print standards, fill out charts) - have posted for orientation', null, 'Checklists & Documents for Server Portfolios', 'handover_date', 2, 'Service Manager', 27),
-  ('Pre-shift notes completed for 4 weeks and on clipboard; include beverage tasting and notes', null, 'Checklists & Documents for Server Portfolios', 'handover_date', 2, 'Service Manager', 28),
+  ('Pre-shift notes completed for 4 weeks and on clipboard, include beverage tasting and notes', null, 'Checklists & Documents for Server Portfolios', 'handover_date', 2, 'Service Manager', 28),
   ('Create necessary Shift Tags on Push for server schedule', null, 'Schedules', 'opening_date', 0, 'Service Manager', 29),
   ('Create necessary shift pre-sets on Push for server schedule', null, 'Schedules', 'opening_date', 0, 'Service Manager', 30),
   ('Enter server training schedules into Push', null, 'Schedules', 'opening_date', 0, 'Service Manager', 31),
@@ -238,7 +230,7 @@ from public.opening_playbooks p, (values
   ('Take the lead on the Steps of Service Seminar with support from Ops', null, 'Training', 'opening_date', -12, 'Service Manager', 33),
   ('Assist TM''s during training with coaching, learning, questions and testing. Highlight those who may stand out.', null, 'Training', 'opening_date', -12, 'Service Manager', 34),
   ('Review server Axonify completion', null, 'Training', 'opening_date', -12, 'Service Manager', 35),
-  ('Teach and uphold uniform standards; coach best look', null, 'Training', 'opening_date', -12, 'Service Manager', 36),
+  ('Teach and uphold uniform standards, coach best look', null, 'Training', 'opening_date', -12, 'Service Manager', 36),
   ('Identify key TMs to help stock and set up patio', null, 'Set up Patio (if applicable)', 'handover_date', 2, 'Service Manager', 37),
   ('Assembly of tables (if applicable)', null, 'Set up Patio (if applicable)', 'handover_date', 2, 'Service Manager', 38),
   ('Layout tables and chairs as per floorplan', null, 'Set up Patio (if applicable)', 'handover_date', 2, 'Service Manager', 39),
@@ -249,7 +241,7 @@ from public.opening_playbooks p, (values
 ) as v(title, description, category, anchor_type, offset_days, owner, seq)
 where p.name = 'Service Manager Playbook';
 
--- ---- Guest Service Manager Playbook : 35 templates ------------------------
+-- ---- Guest Service Manager Playbook : 35 templates -----------------------
 insert into public.opening_playbooks (name, role_key, department_key, description, sort_order)
 select 'Guest Service Manager Playbook', 'guest_service_manager', 'front_of_house', 'Pre-opening accountabilities for the Guest Service Manager role (imported from operational checklists).', 10
 where not exists (select 1 from public.opening_playbooks where name = 'Guest Service Manager Playbook');
@@ -271,11 +263,11 @@ from public.opening_playbooks p, (values
   ('Host binder set up', null, 'Set up Host Stand', 'handover_date', 2, 'Guest Service Manager', 10),
   ('Determine location for back up crayons, high chairs, booster seats and high chair hammocks', null, 'Set up Host Stand', 'handover_date', 2, 'Guest Service Manager', 11),
   ('Set up ''black box'' - laminated copies of job descriptions and uniform standards (5 of each)', null, 'Set up Host Stand', 'handover_date', 2, 'Guest Service Manager', 12),
-  ('Identify key TMs to help set up host stand', '• Bite Club display  • Bite Club/gift card storage  • Twine toilet paper  • Paper rolls  • Reserved signs  • Crayons and kids menus  • Set up writing utensils, stapler, scissors, tape  • Find storage area for lobby cleaning supplies; windex, sanitizer  • Assembly of dinner dinners, feature menus and dessert menus  • Business card display  • Organize menus within host stand', 'Set up Host Stand', 'handover_date', 2, 'Guest Service Manager', 13),
+  ('Identify key TMs to help set up host stand', '• Bite Club display  • Bite Club/gift card storage  • Twine toilet paper  • Paper rolls  • Reserved signs  • Crayons and kids menus  • Set up writing utensils, stapler, scissors, tape  • Find storage area for lobby cleaning supplies, windex, sanitizer  • Assembly of dinner dinners, feature menus and dessert menus  • Business card display  • Organize menus within host stand', 'Set up Host Stand', 'handover_date', 2, 'Guest Service Manager', 13),
   ('Complete audit of duties & checklists to ensure they are specific for your location', '• Host: Opening & Closing duties  • Host: Running Duties  • Host: Cleaning Schedule: Daily/Weekly/Monthly', 'Checklists & Documents for Host Portfolios', 'handover_date', 2, 'Guest Service Manager', 14),
   ('Assemble binder with local businesses and organize bottle drop schedule (assisting GM)', null, 'Miscellaneous Set Up', 'handover_date', 2, 'Guest Service Manager', 15),
   ('Assemble crash kit with checklist provided - store in office', null, 'Miscellaneous Set Up', 'handover_date', 2, 'Guest Service Manager', 16),
-  ('Assemble MSDS binder; include sheets for all chemicals in house (inventory chemicals & print sheets from Diversey online)', null, 'Miscellaneous Set Up', 'handover_date', 2, 'Guest Service Manager', 17),
+  ('Assemble MSDS binder, include sheets for all chemicals in house (inventory chemicals & print sheets from Diversey online)', null, 'Miscellaneous Set Up', 'handover_date', 2, 'Guest Service Manager', 17),
   ('All TMs added to Open Table for section assignment & reservation tracking', null, 'Open Table & Silverware', 'handover_date', 3, 'Guest Service Manager', 18),
   ('Host # in Silverware for Take Out (4000) - test', null, 'Open Table & Silverware', 'handover_date', 3, 'Guest Service Manager', 19),
   ('Host # in Silverware for open counts (3000) - test', null, 'Open Table & Silverware', 'handover_date', 3, 'Guest Service Manager', 20),
@@ -290,13 +282,13 @@ from public.opening_playbooks p, (values
   ('Bite Club binder prepared and trained to hosts', null, 'Training', 'opening_date', -12, 'Guest Service Manager', 29),
   ('Gift Card binder prepared and trained to hosts', null, 'Training', 'opening_date', -12, 'Guest Service Manager', 30),
   ('Reservation programs - Open Table (all hosts trained and have certificate of completion)', null, 'Training', 'opening_date', -12, 'Guest Service Manager', 31),
-  ('Teach and uphold uniform standards; coach best look', null, 'Training', 'opening_date', -12, 'Guest Service Manager', 32),
+  ('Teach and uphold uniform standards, coach best look', null, 'Training', 'opening_date', -12, 'Guest Service Manager', 32),
   ('Please keep track of all items you have done in addition so we may make this list better for the next open', null, 'Training', 'opening_date', -12, 'Guest Service Manager', 33),
   ('Provide your notes/thoughts/learnings to your ROL for this Opening''s Post Mortem', null, 'Training', 'opening_date', -12, 'Guest Service Manager', 34)
 ) as v(title, description, category, anchor_type, offset_days, owner, seq)
 where p.name = 'Guest Service Manager Playbook';
 
--- ---- Regional Playbook : 94 templates -------------------------------------
+-- ---- Regional Playbook : 94 templates ------------------------------------
 insert into public.opening_playbooks (name, role_key, department_key, description, sort_order)
 select 'Regional Playbook', 'regional_leader', 'operations', 'Pre-opening accountabilities for the Regional Operations Leader role (imported from operational checklists).', 10
 where not exists (select 1 from public.opening_playbooks where name = 'Regional Playbook');
@@ -323,7 +315,7 @@ from public.opening_playbooks p, (values
   ('Set floor management expectations for open - 100% table checks, mgmt sections 45 second greet, complaint handling', null, 'Pre-Training', 'opening_date', -35, 'Regional Operations Leader', 15),
   ('Review and approve first 8 FOTW standards that are selected by SM', null, 'Pre-Training', 'opening_date', -35, 'Regional Operations Leader', 16),
   ('Work w/ Megan to prepare support schedule - specific people set to 5 day periods of dedicated support', null, 'Pre-Training', 'opening_date', -35, 'Regional Operations Leader', 17),
-  ('Co-host support team session w/ Megan for all supporting Managers/TMs - "what to expect when you''re supporting"', null, 'Pre-Training', 'opening_date', -35, 'Regional Operations Leader', 18),
+  ('Co-host support team session w/ Megan for all supporting Managers/TMs - what to expect when you''re supporting', null, 'Pre-Training', 'opening_date', -35, 'Regional Operations Leader', 18),
   ('Always on the hunt for MOTs throughout the entire opening process', null, 'During Training', 'opening_date', -12, 'Regional Operations Leader', 19),
   ('Participate in orientation & running seminars as assigned in training plan', null, 'During Training', 'opening_date', -12, 'Regional Operations Leader', 20),
   ('Review TM schedule for first few weeks (first 10 days = no splits, no overs, no ''thrus''. FOH = 10am & 4pm starts)', null, 'During Training', 'opening_date', -12, 'Regional Operations Leader', 21),
@@ -402,9 +394,9 @@ from public.opening_playbooks p, (values
 ) as v(title, description, category, anchor_type, offset_days, owner, seq)
 where p.name = 'Regional Playbook';
 
--- ---- Training Playbook : 23 templates -------------------------------------
+-- ---- Training Playbook : 23 templates ------------------------------------
 insert into public.opening_playbooks (name, role_key, department_key, description, sort_order)
-select 'Training Playbook', 'training', 'training', 'Opening training seminar & testing sequence (imported from the opening training schedule).', 10
+select 'Training Playbook', 'training', 'training', 'Pre-opening accountabilities for the Training role (imported from operational checklists).', 10
 where not exists (select 1 from public.opening_playbooks where name = 'Training Playbook');
 delete from public.opening_task_templates where playbook_id = (select id from public.opening_playbooks where name = 'Training Playbook');
 insert into public.opening_task_templates
@@ -413,7 +405,7 @@ select p.id, v.title, v.description, v.category, v.anchor_type, v.offset_days, v
 from public.opening_playbooks p, (values
   ('Orientation', null, 'Training', 'opening_date', -13, 'Training', 0),
   ('Mission Meeting', null, 'Training', 'opening_date', -13, 'Training', 1),
-  ('"Day in the Life"', null, 'Training', 'opening_date', -12, 'Training', 2),
+  ('Day in the Life', null, 'Training', 'opening_date', -12, 'Training', 2),
   ('Responsible Service', null, 'Training', 'opening_date', -11, 'Training', 3),
   ('SOS Seminar', null, 'Training', 'opening_date', -11, 'Training', 4),
   ('Host Seminar', null, 'Training', 'opening_date', -11, 'Training', 5),
@@ -436,4 +428,3 @@ from public.opening_playbooks p, (values
   ('Takeout Training (online)', null, 'Training', 'opening_date', -10, 'Training', 22)
 ) as v(title, description, category, anchor_type, offset_days, owner, seq)
 where p.name = 'Training Playbook';
-
