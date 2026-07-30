@@ -3,6 +3,7 @@ import { useSession } from './features/auth/useSession'
 import { RedirectToCgops } from './features/auth/RedirectToCgops'
 import { AppShell, type View } from './components/AppShell'
 import { SessionTimeoutManager } from './components/SessionTimeoutManager'
+import { FeedbackWidget } from './components/FeedbackWidget'
 import { DashboardView } from './features/dashboard/DashboardView'
 import { SitesView } from './features/sites/SitesView'
 import { SiteDetailView } from './features/sites/SiteDetailView'
@@ -87,6 +88,9 @@ export default function App() {
           <ReadinessView onOpenSite={openSite} />
         )}
       </AppShell>
+      {/* Global feedback widget: mounted once for the signed-in app so it
+          floats over every screen. */}
+      <FeedbackWidget screen={siteId ? `sites/${siteId}` : view} />
     </>
   )
 }
