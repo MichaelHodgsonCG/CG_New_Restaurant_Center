@@ -346,3 +346,22 @@ export async function recalculateDueDates(site: OpeningSite): Promise<RecalcResu
   }
   return { updated, preserved, unscheduled }
 }
+
+// --- Platform feedback ---------------------------------------------------
+
+export interface PlatformFeedbackInput {
+  app_module: string
+  screen: string
+  device: string
+  user_agent: string
+  message: string
+  type: 'bug' | 'idea' | 'question' | null
+}
+
+// Inserts into the CGOPS-owned platform_feedback table. Identity columns
+// (auth_user_id, display_name, person_id) are stamped by a DB trigger on
+// insert — the app only attaches context.
+export async function submitPlatformFeedback(input: PlatformFeedbackInput): Promise<void> {
+  const { error } = await supabase.from('platform_feedback').insert(input)
+  if (error) throw error
+}
