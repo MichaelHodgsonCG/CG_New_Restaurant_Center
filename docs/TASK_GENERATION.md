@@ -106,6 +106,32 @@ tasks only; renaming in the playbook library updates the templates. The two
 deliberately don't sync automatically — a live opening's board is its own copy,
 exactly like task titles.
 
+## Playbook ↔ site sync (the block tools menu)
+
+Each playbook block on Opening Detail has a tools menu (managers only),
+implemented in `src/lib/playbookSync.ts` and keyed on `task_template_id`:
+
+- **Apply playbook updates** (playbook → site): new templates become tasks
+  (via the same idempotent generation), changed templates update their tasks'
+  title / description / section / anchor+offset — recomputing the due date
+  only when it was never hand-set — and deactivated templates mark their
+  still-open tasks `not_applicable` (delete is admin-only; N/A preserves the
+  record). Roles and person links are never touched here.
+- **Update playbook from this opening** (site → playbook): pushes titles,
+  descriptions, sections, curated order, role defaults, and offsets
+  back-computed from hand-set due dates into the library, shaping future
+  openings. Role defaults are only taken from tasks *without* a person link —
+  a picked person's name is not a role. Hand-added tasks in the block are
+  promoted to templates and linked. Additive: never deactivates or deletes
+  templates.
+- **Re-apply default roles** (playbook → site): copies template default
+  owner/support roles onto tasks; never blanks a value, never touches
+  per-task person overrides.
+- **Save as new playbook…**: snapshots the block's tasks as a fresh playbook
+  (offsets kept, or back-computed from the opening date for hand-dated
+  tasks). Available on the one-off "Other tasks" block too. The source
+  opening is not modified.
+
 ## Marking not applicable
 
 Setting a task's status to `not_applicable` removes it from the completion
