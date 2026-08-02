@@ -39,6 +39,10 @@ When a playbook is added to an opening (Opening Detail → *Add a playbook*):
 3. The due date is computed from the site's anchor date + the template offset.
 4. `date_overridden` starts `false`; `assigned_role` copies the template's
    `default_owner_role`; `priority` starts `high` for required templates.
+5. `category` copies from the template — it becomes the task's section header
+   on the board — and `sort_order` copies the template's position so sections
+   render in curated order. Reordering on the board swaps `sort_order` values
+   and never touches `sequence` (template lineage).
 
 ### No duplicate generation
 
@@ -85,9 +89,22 @@ manual dates it preserved.
 
 ## One-off tasks
 
-Tasks that don't belong to a playbook can be added directly to a site (Opening
-Detail → *Add one-off task*). They carry `task_template_id = null`, group under
-"One-off tasks", and are never affected by generation or recalculation.
+Tasks that don't belong to a template can be added directly on the board:
+every section has an **Add task** row action, each playbook block has an
+**Add section** input, and **Add one-off task** creates a task outside any
+playbook (grouped under "Other tasks"). All of these carry
+`task_template_id = null` and are never affected by generation or
+recalculation. A per-section addition still records the `playbook_id` and
+`category` it was created under so it stays in its section.
+
+## Sections
+
+Sections are not entities — they are the distinct `category` values on the
+tasks (templates carry the canonical value; `null` renders as "General").
+Renaming a section on a site's board bulk-updates the category on that site's
+tasks only; renaming in the playbook library updates the templates. The two
+deliberately don't sync automatically — a live opening's board is its own copy,
+exactly like task titles.
 
 ## Marking not applicable
 

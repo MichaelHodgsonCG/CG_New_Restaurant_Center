@@ -103,6 +103,17 @@ emails**. See migration `20260710180000_role_mapping_and_profile_flags.sql`.
 | `opening_sites` | A concrete opening + key site info + construction milestones. |
 | `opening_site_playbooks` | Which playbooks are applied to a site (drives generation). |
 | `opening_tasks` | Generated or one-off site-specific tasks. |
+| `opening_site_roles` | Role → person assignment per site ("Camilla is the GM here"). |
+| `restaurant_center_people` (view) | Minimal picker roster from People Center (no HR fields). |
+
+### Assignment model (roles first)
+
+Templates default owners **by role** (`default_owner_role` /
+`default_support_role`); each opening assigns a **person to the role** in the
+Team panel (`opening_site_roles`). A task's displayed owner/support resolves
+dynamically: explicit per-task person link → site role assignment → bare role
+text. My Tasks matches through the same chain. See
+`docs/MENU_CENTER_TASK_FORMAT_PROPOSAL.md` §3.4 and `src/lib/assignment.ts`.
 
 ### Anchor & offset convention
 
@@ -135,10 +146,13 @@ drop-then-create) and **additive** (nothing alters CGOPS-owned objects).
 - **Construction**: milestone references only — `handover_date`,
   `handover_status`, `construction_note`, `construction_link`. No construction
   task module; this does not replace Shanna's process.
-- **Staffing**: People Center owns people. Opening Detail and Readiness show a
-  staffing **placeholder** today; a future integration will surface the
-  assigned person, required-by date, actual start date and a link to the
-  People Center record — read-only visibility, never a duplicate.
+- **Staffing**: People Center owns people. This app stores only soft person
+  references (`opening_site_roles.person_id`, per-task override ids) plus a
+  display-name snapshot; the picker roster comes from the
+  `restaurant_center_people` view, which exposes id/name/kind/photo and
+  nothing else. Deeper staffing-readiness data (required-by date, actual
+  start date, People Center record link) remains a future read-only
+  integration — never a duplicate.
 
 ## 7. Frontend structure
 

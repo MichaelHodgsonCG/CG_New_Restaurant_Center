@@ -2,16 +2,20 @@
 // department (GM, Chef, IT, Marketing, …). "Playbook" is the user-facing
 // word; the underlying model is opening_playbooks + opening_task_templates.
 // This is where the reusable library is curated, before it is generated
-// onto a specific opening.
+// onto a specific opening. Templates are grouped into category sections —
+// the same sections the site task board renders.
 
 import { useCallback, useEffect, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   createPlaybook,
   createTemplate,
   deleteTemplate,
   listPlaybooks,
   listTemplates,
+  renameTemplateCategory,
+  updatePlaybook,
+  updateTemplate,
 } from '../../lib/api'
 import {
   Badge,
@@ -19,11 +23,13 @@ import {
   Card,
   EmptyState,
   Field,
+  Modal,
   PageHeader,
   Select,
   TextArea,
   TextInput,
 } from '../../components/ui'
+import { SectionHeader } from '../../components/SectionHeader'
 import {
   ANCHOR_LABELS,
   ANCHOR_TYPES,
@@ -32,6 +38,12 @@ import {
   type TaskTemplate,
 } from '../../types'
 
+const GENERAL = 'General' // display name for templates without a category
+
+function templatePosition(t: TaskTemplate): number {
+  return t.sort_order ?? t.sequence
+}
+
 export function PlaybooksView({ canManage }: { canManage: boolean }) {
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -39,6 +51,7 @@ export function PlaybooksView({ canManage }: { canManage: boolean }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addingPlaybook, setAddingPlaybook] = useState(false)
+  const [editingPlaybook, setEditingPlaybook] = useState(false)
 
   const loadPlaybooks = useCallback(async () => {
     try {
@@ -56,7 +69,7 @@ export function PlaybooksView({ canManage }: { canManage: boolean }) {
     loadPlaybooks()
   }, [loadPlaybooks])
 
-  useEffect(() => {
+  const loadTemplates = useCallback(() => {
     if (!selectedId) {
       setTemplates([])
       return
@@ -66,11 +79,22 @@ export function PlaybooksView({ canManage }: { canManage: boolean }) {
       .catch((e) => setError(e instanceof Error ? e.message : 'Could not load templates.'))
   }, [selectedId])
 
+  useEffect(() => {
+    loadTemplates()
+  }, [loadTemplates])
+
   async function handleAddPlaybook(name: string) {
     const pb = await createPlaybook({ name, sort_order: playbooks.length })
     setAddingPlaybook(false)
     await loadPlaybooks()
     setSelectedId(pb.id)
+  }
+
+  async function handleEditPlaybook(patch: Partial<Playbook>) {
+    if (!selectedId) return
+    await updatePlaybook(selectedId, patch)
+    setEditingPlaybook(false)
+    await loadPlaybooks()
   }
 
   const selected = playbooks.find((p) => p.id === selectedId) ?? null
@@ -132,7 +156,8 @@ export function PlaybooksView({ canManage }: { canManage: boolean }) {
                   playbook={selected}
                   templates={templates}
                   canManage={canManage}
-                  onChange={() => selectedId && listTemplates(selectedId).then(setTemplates)}
+                  onChange={loadTemplates}
+                  onEditPlaybook={() => setEditingPlaybook(true)}
                 />
               )}
             </div>
@@ -146,6 +171,13 @@ export function PlaybooksView({ canManage }: { canManage: boolean }) {
           onSubmit={handleAddPlaybook}
         />
       )}
+      {editingPlaybook && selected && (
+        <EditPlaybookModal
+          playbook={selected}
+          onCancel={() => setEditingPlaybook(false)}
+          onSubmit={handleEditPlaybook}
+        />
+      )}
     </div>
   )
 }
@@ -155,24 +187,71 @@ function TemplateList({
   templates,
   canManage,
   onChange,
+  onEditPlaybook,
 }: {
   playbook: Playbook
   templates: TaskTemplate[]
   canManage: boolean
   onChange: () => void
+  onEditPlaybook: () => void
 }) {
   const [adding, setAdding] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+
+  // Sections in order of first appearance, templates already position-sorted.
+  const sections: [string, TaskTemplate[]][] = []
+  {
+    const map = new Map<string, TaskTemplate[]>()
+    for (const t of templates) {
+      const cat = t.category ?? GENERAL
+      const arr = map.get(cat)
+      if (arr) arr.push(t)
+      else {
+        const next: TaskTemplate[] = [t]
+        map.set(cat, next)
+        sections.push([cat, next])
+      }
+    }
+  }
+  const categories = sections.map(([c]) => c).filter((c) => c !== GENERAL)
 
   async function remove(id: string) {
     await deleteTemplate(id)
     onChange()
   }
 
+  async function move(sectionTemplates: TaskTemplate[], idx: number, dir: -1 | 1) {
+    const a = sectionTemplates[idx]
+    const b = sectionTemplates[idx + dir]
+    if (!b) return
+    await Promise.all([
+      updateTemplate(a.id, { sort_order: templatePosition(b) }),
+      updateTemplate(b.id, { sort_order: templatePosition(a) }),
+    ])
+    onChange()
+  }
+
+  async function renameSection(from: string, to: string) {
+    await renameTemplateCategory(playbook.id, from, to)
+    onChange()
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="font-semibold text-charcoal">{playbook.name}</h2>
+          <div className="flex items-center gap-1.5">
+            <h2 className="font-semibold text-charcoal">{playbook.name}</h2>
+            {canManage && (
+              <button
+                onClick={onEditPlaybook}
+                title="Edit playbook"
+                className="rounded p-1 text-charcoal/30 transition-colors hover:text-charcoal/70"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           {playbook.description && (
             <p className="text-sm text-charcoal/55">{playbook.description}</p>
           )}
@@ -185,11 +264,15 @@ function TemplateList({
       </div>
 
       {canManage && adding && (
-        <NewTemplateForm
-          playbookId={playbook.id}
+        <TemplateForm
+          categories={categories}
           nextSequence={templates.length}
+          nextPosition={
+            templates.length === 0 ? 1 : Math.max(...templates.map(templatePosition)) + 1
+          }
           onCancel={() => setAdding(false)}
-          onCreated={() => {
+          onSubmit={async (values) => {
+            await createTemplate({ playbook_id: playbook.id, ...values })
             setAdding(false)
             onChange()
           }}
@@ -202,53 +285,120 @@ function TemplateList({
           hint={canManage ? 'Add the tasks this playbook should generate.' : undefined}
         />
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
-            <thead>
-              <tr className="border-b border-surface-line text-left text-xs uppercase tracking-wide text-charcoal/50">
-                <th className="px-3 py-2 font-medium">#</th>
-                <th className="px-3 py-2 font-medium">Task</th>
-                <th className="px-3 py-2 font-medium">Anchor</th>
-                <th className="px-3 py-2 font-medium">Offset</th>
-                <th className="px-3 py-2 font-medium">Owner role</th>
-                <th className="px-3 py-2 font-medium">Req.</th>
-                {canManage && <th className="px-3 py-2" />}
-              </tr>
-            </thead>
-            <tbody>
-              {templates.map((t) => (
-                <tr key={t.id} className="border-b border-surface-line last:border-0">
-                  <td className="px-3 py-2 text-charcoal/45">{t.sequence + 1}</td>
-                  <td className="px-3 py-2">
-                    <div className="font-medium">{t.title}</div>
-                    {t.description && (
-                      <div className="text-xs text-charcoal/55">{t.description}</div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-charcoal/70">{ANCHOR_LABELS[t.anchor_type]}</td>
-                  <td className="px-3 py-2 tabular-nums text-charcoal/70">
-                    {offsetLabel(t.offset_days)}
-                  </td>
-                  <td className="px-3 py-2 text-charcoal/70">{t.default_owner_role ?? '—'}</td>
-                  <td className="px-3 py-2">
-                    {t.required ? <Badge tone="warning">Required</Badge> : '—'}
-                  </td>
-                  {canManage && (
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={() => remove(t.id)}
-                        title="Delete template"
-                        className="rounded p-1 text-charcoal/40 hover:bg-danger/10 hover:text-danger"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
+        sections.map(([category, sectionTemplates]) => (
+          <div key={category}>
+            <SectionHeader
+              name={category}
+              count={`${sectionTemplates.length}`}
+              onRename={
+                canManage && category !== GENERAL
+                  ? (to) => renameSection(category, to)
+                  : undefined
+              }
+            />
+            <Card className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead>
+                  <tr className="border-b border-surface-line text-left text-xs uppercase tracking-wide text-charcoal/50">
+                    {canManage && <th className="w-10 px-2 py-2" />}
+                    <th className="px-3 py-2 font-medium">Task</th>
+                    <th className="px-3 py-2 font-medium">Anchor</th>
+                    <th className="px-3 py-2 font-medium">Offset</th>
+                    <th className="px-3 py-2 font-medium">Owner role</th>
+                    <th className="px-3 py-2 font-medium">Req.</th>
+                    {canManage && <th className="px-3 py-2" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sectionTemplates.map((t, idx) =>
+                    editingId === t.id ? (
+                      <tr key={t.id} className="border-b border-surface-line last:border-0">
+                        <td colSpan={canManage ? 7 : 5} className="p-2">
+                          <TemplateForm
+                            template={t}
+                            categories={categories}
+                            onCancel={() => setEditingId(null)}
+                            onSubmit={async (values) => {
+                              await updateTemplate(t.id, values)
+                              setEditingId(null)
+                              onChange()
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={t.id} className="border-b border-surface-line last:border-0">
+                        {canManage && (
+                          <td className="px-2 py-2">
+                            <div className="flex flex-col">
+                              <button
+                                onClick={() => move(sectionTemplates, idx, -1)}
+                                disabled={idx === 0}
+                                className="p-0.5 text-charcoal/25 hover:text-charcoal/70 disabled:opacity-30"
+                              >
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => move(sectionTemplates, idx, 1)}
+                                disabled={idx === sectionTemplates.length - 1}
+                                className="p-0.5 text-charcoal/25 hover:text-charcoal/70 disabled:opacity-30"
+                              >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                        <td className="px-3 py-2">
+                          <div className="font-medium">{t.title}</div>
+                          {t.description && (
+                            <div className="text-xs text-charcoal/55">{t.description}</div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-charcoal/70">
+                          {ANCHOR_LABELS[t.anchor_type]}
+                        </td>
+                        <td className="px-3 py-2 tabular-nums text-charcoal/70">
+                          {offsetLabel(t.offset_days)}
+                        </td>
+                        <td className="px-3 py-2 text-charcoal/70">
+                          {t.default_owner_role ?? '—'}
+                          {t.default_support_role && (
+                            <div className="text-xs text-charcoal/45">
+                              Support: {t.default_support_role}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {t.required ? <Badge tone="warning">Required</Badge> : '—'}
+                        </td>
+                        {canManage && (
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex items-center justify-end gap-0.5">
+                              <button
+                                onClick={() => setEditingId(t.id)}
+                                title="Edit template"
+                                className="rounded p-1 text-charcoal/40 hover:bg-surface-muted hover:text-charcoal"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => remove(t.id)}
+                                title="Delete template"
+                                className="rounded p-1 text-charcoal/40 hover:bg-danger/10 hover:text-danger"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ),
                   )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+                </tbody>
+              </table>
+            </Card>
+          </div>
+        ))
       )}
       <p className="text-xs text-charcoal/45">
         Offset convention: negative = days <strong>before</strong> the anchor,
@@ -264,23 +414,43 @@ function offsetLabel(days: number): string {
   return days < 0 ? `${Math.abs(days)}d before` : `${days}d after`
 }
 
-function NewTemplateForm({
-  playbookId,
+interface TemplateFormValues {
+  title: string
+  description: string | null
+  category: string | null
+  anchor_type: AnchorType
+  offset_days: number
+  default_owner_role: string | null
+  default_support_role: string | null
+  required: boolean
+  sequence?: number
+  sort_order?: number
+}
+
+// One form for both create (no `template`) and inline edit (prefilled).
+function TemplateForm({
+  template,
+  categories,
   nextSequence,
+  nextPosition,
   onCancel,
-  onCreated,
+  onSubmit,
 }: {
-  playbookId: string
-  nextSequence: number
+  template?: TaskTemplate
+  categories: string[]
+  nextSequence?: number
+  nextPosition?: number
   onCancel: () => void
-  onCreated: () => void
+  onSubmit: (values: TemplateFormValues) => Promise<void>
 }) {
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [anchor, setAnchor] = useState<AnchorType>('opening_date')
-  const [offset, setOffset] = useState('-14')
-  const [role, setRole] = useState('')
-  const [required, setRequired] = useState(false)
+  const [title, setTitle] = useState(template?.title ?? '')
+  const [description, setDescription] = useState(template?.description ?? '')
+  const [category, setCategory] = useState(template?.category ?? '')
+  const [anchor, setAnchor] = useState<AnchorType>(template?.anchor_type ?? 'opening_date')
+  const [offset, setOffset] = useState(String(template?.offset_days ?? -14))
+  const [role, setRole] = useState(template?.default_owner_role ?? '')
+  const [supportRole, setSupportRole] = useState(template?.default_support_role ?? '')
+  const [required, setRequired] = useState(template?.required ?? false)
   const [saving, setSaving] = useState(false)
 
   async function submit(e: React.FormEvent) {
@@ -288,17 +458,21 @@ function NewTemplateForm({
     if (title.trim() === '') return
     setSaving(true)
     try {
-      await createTemplate({
-        playbook_id: playbookId,
+      const values: TemplateFormValues = {
         title: title.trim(),
-        description: description.trim() === '' ? undefined : description.trim(),
+        description: description.trim() === '' ? null : description.trim(),
+        category: category.trim() === '' ? null : category.trim(),
         anchor_type: anchor,
         offset_days: Number.parseInt(offset, 10) || 0,
-        default_owner_role: role.trim() === '' ? undefined : role.trim(),
+        default_owner_role: role.trim() === '' ? null : role.trim(),
+        default_support_role: supportRole.trim() === '' ? null : supportRole.trim(),
         required,
-        sequence: nextSequence,
-      })
-      onCreated()
+      }
+      if (!template) {
+        values.sequence = nextSequence
+        values.sort_order = nextPosition
+      }
+      await onSubmit(values)
     } finally {
       setSaving(false)
     }
@@ -321,6 +495,19 @@ function NewTemplateForm({
             />
           </Field>
         </div>
+        <Field label="Section" hint="Groups tasks on the board, e.g. Hiring, Training.">
+          <TextInput
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            list="template-categories"
+            placeholder={GENERAL}
+          />
+          <datalist id="template-categories">
+            {categories.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </Field>
         <Field label="Anchor date">
           <Select value={anchor} onChange={(e) => setAnchor(e.target.value as AnchorType)}>
             {ANCHOR_TYPES.map((a) => (
@@ -344,6 +531,13 @@ function NewTemplateForm({
             placeholder="e.g. General Manager"
           />
         </Field>
+        <Field label="Default support role (optional)">
+          <TextInput
+            value={supportRole}
+            onChange={(e) => setSupportRole(e.target.value)}
+            placeholder="e.g. Regional"
+          />
+        </Field>
         <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-charcoal/70">
           <input
             type="checkbox"
@@ -358,7 +552,7 @@ function NewTemplateForm({
           Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={saving || title.trim() === ''}>
-          {saving ? 'Adding…' : 'Add template'}
+          {saving ? 'Saving…' : template ? 'Save' : 'Add template'}
         </Button>
       </div>
     </form>
@@ -390,12 +584,8 @@ function NewPlaybookModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
-      <form
-        onSubmit={submit}
-        className="relative w-full max-w-md rounded-xl border border-surface-line bg-surface p-5 shadow-xl"
-      >
+    <Modal onClose={onCancel}>
+      <form onSubmit={submit}>
         <h2 className="mb-3 font-semibold">New playbook</h2>
         <Field label="Playbook name" hint="e.g. General Manager Playbook">
           <TextInput value={name} onChange={(e) => setName(e.target.value)} autoFocus />
@@ -410,6 +600,76 @@ function NewPlaybookModal({
           </Button>
         </div>
       </form>
-    </div>
+    </Modal>
+  )
+}
+
+function EditPlaybookModal({
+  playbook,
+  onCancel,
+  onSubmit,
+}: {
+  playbook: Playbook
+  onCancel: () => void
+  onSubmit: (patch: Partial<Playbook>) => Promise<void>
+}) {
+  const [name, setName] = useState(playbook.name)
+  const [description, setDescription] = useState(playbook.description ?? '')
+  const [active, setActive] = useState(playbook.active)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (name.trim() === '') return
+    setSaving(true)
+    setError(null)
+    try {
+      await onSubmit({
+        name: name.trim(),
+        description: description.trim() === '' ? null : description.trim(),
+        active,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the playbook.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal onClose={onCancel}>
+      <form onSubmit={submit}>
+        <h2 className="mb-3 font-semibold">Edit playbook</h2>
+        <div className="space-y-3">
+          <Field label="Playbook name">
+            <TextInput value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          </Field>
+          <Field label="Description (optional)">
+            <TextArea
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </Field>
+          <label className="flex items-center gap-2 text-sm text-charcoal/70">
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={(e) => setActive(e.target.checked)}
+            />
+            Active — offered when adding playbooks to an opening
+          </label>
+        </div>
+        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" disabled={saving || name.trim() === ''}>
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }

@@ -3,9 +3,11 @@ import { useSession } from './features/auth/useSession'
 import { RedirectToCgops } from './features/auth/RedirectToCgops'
 import { AppShell, type View } from './components/AppShell'
 import { SessionTimeoutManager } from './components/SessionTimeoutManager'
+import { FeedbackWidget } from './components/FeedbackWidget'
 import { DashboardView } from './features/dashboard/DashboardView'
 import { SitesView } from './features/sites/SitesView'
 import { SiteDetailView } from './features/sites/SiteDetailView'
+import { MyTasksView } from './features/mytasks/MyTasksView'
 import { PlaybooksView } from './features/playbooks/PlaybooksView'
 import { ReadinessView } from './features/readiness/ReadinessView'
 import { can, toPermissionUser } from './permissions'
@@ -65,9 +67,12 @@ export default function App() {
         {siteId ? (
           <SiteDetailView
             siteId={siteId}
+            profile={profile}
             canManage={canManage}
             onBack={() => setSiteId(null)}
           />
+        ) : view === 'mytasks' ? (
+          <MyTasksView profile={profile} canManage={canManage} onOpenSite={openSite} />
         ) : view === 'dashboard' ? (
           <DashboardView
             canManage={canManage}
@@ -87,6 +92,9 @@ export default function App() {
           <ReadinessView onOpenSite={openSite} />
         )}
       </AppShell>
+      {/* Global feedback widget: mounted once for the signed-in app so it
+          floats over every screen. */}
+      <FeedbackWidget screen={siteId ? `sites/${siteId}` : view} />
     </>
   )
 }
