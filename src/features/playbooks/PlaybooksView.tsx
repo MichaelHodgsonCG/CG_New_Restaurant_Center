@@ -19,6 +19,7 @@ import {
   updateTemplate,
 } from '../../lib/api'
 import { Avatar, PersonPicker } from '../../components/PersonPicker'
+import { sectionMovePlan } from '../../lib/sectionOrder'
 import {
   Badge,
   Button,
@@ -243,6 +244,17 @@ function TemplateList({
     onChange()
   }
 
+  async function moveSection(index: number, dir: -1 | 1) {
+    const plan = sectionMovePlan(
+      sections.map(([, ts]) => ts.map((t) => ({ id: t.id, position: templatePosition(t) }))),
+      index,
+      dir,
+    )
+    if (!plan) return
+    await Promise.all(plan.map((p) => updateTemplate(p.id, { sort_order: p.sort_order })))
+    onChange()
+  }
+
   return (
     <div className="space-y-5">
       {/* Picker row — the dropdown IS the title */}
@@ -295,7 +307,7 @@ function TemplateList({
           hint={canManage ? 'Add the tasks this playbook should generate.' : undefined}
         />
       ) : (
-        sections.map(([category, sectionTemplates]) => (
+        sections.map(([category, sectionTemplates], sectionIdx) => (
           <div key={category}>
             <SectionHeader
               name={category}
@@ -305,6 +317,9 @@ function TemplateList({
                   ? (to) => renameSection(category, to)
                   : undefined
               }
+              onMove={canManage ? (dir) => moveSection(sectionIdx, dir) : undefined}
+              canMoveUp={sectionIdx > 0}
+              canMoveDown={sectionIdx < sections.length - 1}
             />
             <Card className="mt-2 overflow-x-auto">
               <table className="w-full min-w-[560px] text-sm">
