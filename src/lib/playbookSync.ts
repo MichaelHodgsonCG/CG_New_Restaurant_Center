@@ -8,9 +8,11 @@
 //   savePlaybookFromSite   site → NEW playbook (snapshot / concept variant)
 //
 // Rules honoured throughout: a manually overridden due date is never
-// silently changed; per-task person overrides are never touched; templates
-// stay role-only (a task whose role text was replaced by a picked person is
-// not pushed back as a "role").
+// silently changed, and pushing back never lets a per-site person override
+// clobber an existing template's default — named defaults on existing
+// templates (the HQ "Darryl/Todd/Riley/Pat" lists) are curated in the
+// library. Hand-added tasks promoted to templates DO carry their assignee,
+// role text or named person alike.
 
 import { supabase } from './supabase'
 import {
@@ -117,8 +119,12 @@ export async function reapplyDefaultRoles(
     const patch: Partial<OpeningTask> = {}
     if (tpl.default_owner_role && task.assigned_role !== tpl.default_owner_role)
       patch.assigned_role = tpl.default_owner_role
+    if (tpl.default_owner_person_id && task.assigned_person_id !== tpl.default_owner_person_id)
+      patch.assigned_person_id = tpl.default_owner_person_id
     if (tpl.default_support_role && task.support_role !== tpl.default_support_role)
       patch.support_role = tpl.default_support_role
+    if (tpl.default_support_person_id && task.support_person_id !== tpl.default_support_person_id)
+      patch.support_person_id = tpl.default_support_person_id
     if (Object.keys(patch).length > 0) {
       await updateTask(task.id, patch)
       updated++
@@ -190,6 +196,8 @@ export async function updatePlaybookFromSite(
       }
     } else {
       // Hand-added on the board → promote to a template, then link the task.
+      // The assignee carries over as-is — role text or a named person (the
+      // "pass this job to Darryl" flow).
       const fromOpening =
         task.due_date && site.opening_date ? daysUntil(task.due_date, site.opening_date) : null
       const created = await createTemplate({
@@ -199,8 +207,10 @@ export async function updatePlaybookFromSite(
         category: task.category,
         anchor_type: fromOpening !== null ? 'opening_date' : 'fixed_date',
         offset_days: fromOpening ?? 0,
-        default_owner_role: task.assigned_person_id ? null : task.assigned_role,
-        default_support_role: task.support_person_id ? null : task.support_role,
+        default_owner_role: task.assigned_role,
+        default_owner_person_id: task.assigned_person_id,
+        default_support_role: task.support_role,
+        default_support_person_id: task.support_person_id,
         required: task.priority === 'high',
         sequence: nextSequence++,
         sort_order: taskPosition(task),
@@ -239,8 +249,11 @@ export async function savePlaybookFromSite(
       description: task.description,
       category: task.category,
       ...anchor,
-      default_owner_role: task.assigned_person_id ? null : task.assigned_role,
-      default_support_role: task.support_person_id ? null : task.support_role,
+      // Faithful snapshot: role text and person links both carry over.
+      default_owner_role: task.assigned_role,
+      default_owner_person_id: task.assigned_person_id,
+      default_support_role: task.support_role,
+      default_support_person_id: task.support_person_id,
       required: task.priority === 'high',
       sequence: idx,
       sort_order: taskPosition(task),

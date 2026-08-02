@@ -106,13 +106,16 @@ emails**. See migration `20260710180000_role_mapping_and_profile_flags.sql`.
 | `opening_site_roles` | Role → person assignment per site ("Camilla is the GM here"). |
 | `restaurant_center_people` (view) | Minimal picker roster from People Center (no HR fields). |
 
-### Assignment model (roles first)
+### Assignment model (roles first, named people allowed)
 
 Templates default owners **by role** (`default_owner_role` /
 `default_support_role`); each opening assigns a **person to the role** in the
-Team panel (`opening_site_roles`). A task's displayed owner/support resolves
-dynamically: explicit per-task person link → site role assignment → bare role
-text. My Tasks matches through the same chain. See
+Team panel (`opening_site_roles`). Templates may instead name a **person**
+directly (`default_owner_person_id` — the HQ lists: Darryl, Todd, Riley,
+Pat…), which generation copies onto the task as an explicit link, skipping
+the per-site step. A task's displayed owner/support resolves dynamically:
+explicit per-task person link → site role assignment → bare role text. My
+Tasks matches through the same chain. See
 `docs/MENU_CENTER_TASK_FORMAT_PROPOSAL.md` §3.4 and `src/lib/assignment.ts`.
 
 ### Anchor & offset convention
