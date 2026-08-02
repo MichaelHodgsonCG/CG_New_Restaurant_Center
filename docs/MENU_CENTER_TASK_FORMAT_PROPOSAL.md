@@ -88,10 +88,14 @@ alter table opening_tasks
 ```sql
 alter table opening_task_templates
   add column if not exists default_support_role text,
-  add column if not exists default_owner_person_id uuid,
-  add column if not exists default_support_person_id uuid,
   add column if not exists sort_order double precision;
 ```
+
+Templates stay **role-only** — no default person columns. A playbook is reused
+across every opening, so "who" can never live on the template; it lives on the
+site (§3.4). This is a deliberate improvement over Menu Center, which stores
+owner names on templates and then needs an "Apply Owners" pass to fix them up
+per launch.
 
 `category` already exists (added by the seed migration) — it just needs to be
 surfaced in `TaskTemplate`, `api.ts`, and the UI. The 341 seeded FOH templates
@@ -114,7 +118,43 @@ Office), same rationale: exposes zero HR fields, keeps People Center as the
 system of record, and satisfies the ARCHITECTURE.md staffing boundary — we
 reference people, we don't manage them.
 
-### 3.4 Explicitly not copied
+### 3.4 Site role assignments — the role → person bridge
+
+The core assignment model: templates default owners **by role**, and each
+opening assigns a **person to the role**. Assign Camilla to "General Manager"
+on the Beertown site and every GM-role task on that site resolves to her —
+task rows show her name/avatar, and My Tasks (§4.5) surfaces them to her.
+
+```sql
+create table if not exists opening_site_roles (
+  id uuid primary key default gen_random_uuid(),
+  opening_site_id uuid not null references opening_sites(id) on delete cascade,
+  role_key text not null,          -- matches default_owner_role / assigned_role text
+  person_id uuid,                  -- soft ref → People Center person
+  person_name text,                -- display snapshot (survives view changes)
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (opening_site_id, role_key)
+);
+-- RLS: select using(true); insert/update can_manage(); delete is_admin() —
+-- same pattern as the other opening_ tables.
+```
+
+**Resolution order** for a task's owner (support is identical):
+
+1. `opening_tasks.assigned_person_id` — an explicit per-task override, set via
+   the row's PersonPicker. Wins always.
+2. The site's `opening_site_roles` row matching `assigned_role` — the normal
+   case. Resolved dynamically at render, not backfilled: assign or swap the GM
+   mid-opening and every GM task (past and future, including newly generated
+   ones) follows immediately, with nothing to re-apply.
+3. Neither → the row shows the bare role chip ("General Manager") — the honest
+   pre-hiring state of an opening.
+
+Dynamic resolution is the second deliberate departure from Menu Center, whose
+owner text is a per-task snapshot that goes stale when people change.
+
+### 3.5 Explicitly not copied
 
 - No `menu_center`-style separate checklist table — `opening_sites` +
   `opening_site_playbooks` already play that role.
@@ -154,11 +194,13 @@ reference people, we don't manage them.
 - **Due date**: bare `<input type="date">` styled like Menu Center's ghost
   input. Editing sets `date_overridden = true` (existing rule); the lock
   indicator moves into the date cell's `title`/icon.
-- **Owner / Support**: `PersonPicker` writing
-  `{assigned_role, assigned_person_id}` / `{support_role, support_person_id}`.
-  Free text keeps working — seeded role strings like "General Manager" remain
-  valid until a real person is picked, which is exactly the pre-hiring state of
-  an opening.
+- **Owner / Support**: show the *resolved* assignee per §3.4 — avatar +
+  name when a person resolves (via role assignment or per-task override), the
+  role chip otherwise, with the role always visible in the cell's tooltip
+  ("General Manager · Camilla"). Clicking opens a `PersonPicker` that writes a
+  per-task override (`assigned_person_id` / `support_person_id`); clearing the
+  override falls back to the role assignment. Role-wide changes belong in the
+  Team panel (§4.3), not here.
 - **Priority / at-risk**: fold into the note/flag cluster on the right — an
   `at_risk` flag toggle stays (it feeds Readiness); the priority select drops
   from the row (seeded `high` = "Required" badge stays as a chip on the title,
@@ -189,7 +231,15 @@ Adopt the Menu Center detail-page chrome:
 5. **Per-section Add task** (managers, not filtering): inline-creates a
    one-off task pre-filled with that playbook/category — replaces the separate
    `OneOffTaskForm`. "Add section" appears within a playbook block.
-6. **Tools dropdown** replaces the loose header buttons: Recalculate dates,
+6. **Team panel** — replaces the "Integration pending" staffing placeholder
+   card. Lists every role in play on this site (distinct
+   `default_owner_role` / `default_support_role` values across the site's
+   playbooks, plus any ad-hoc `assigned_role` strings) with a `PersonPicker`
+   per role writing `opening_site_roles`. This is where "assign Camilla as
+   GM" happens — one action, all her tasks resolve. Shows a count per role
+   ("General Manager · 84 tasks") so unstaffed roles with heavy workload are
+   obvious.
+7. **Tools dropdown** replaces the loose header buttons: Recalculate dates,
    Edit details, and the Phase-3 template operations (§6).
 
 ### 4.4 `PlaybooksView` — template library catches up
@@ -207,23 +257,36 @@ Adopt the Menu Center detail-page chrome:
 
 Port `MyTasks.tsx`: a view listing the signed-in user's tasks across all
 active sites, bucket tiles (Overdue / This week / 8–14 days / Later), inline
-complete, grouped by site. Data comes from existing `listAllTasks()`.
-User→person resolution: port `launchTaskOwner.ts`'s approach —
-`profile.person_id` when People Center wiring lands (it's `null` today), with
-fallback to display-name/email token matching against `assigned_role` /
-`support_role`, and the honest "we couldn't match your profile" empty state.
+complete, grouped by site. Data: existing `listAllTasks()` + the sites' role
+assignments.
+
+"My" is decided by the §3.4 resolution chain: a task is mine when its
+resolved owner *or* support person is me — i.e. an explicit per-task override
+pointing at my `person_id`, or a role assignment on that site mapping the
+task's role to me. So *default template role → assign to Camilla → Camilla
+sees her tasks in My Tasks* takes exactly one action in the Team panel.
+
+User → person: `profile.person_id` once People Center wiring lands (it is
+`null` today), with `launchTaskOwner.ts`-style display-name/email fallback
+matching against `opening_site_roles.person_name` in the interim, and the
+honest "we couldn't match your profile" empty state.
 
 ---
 
 ## 5. Data-layer changes (`src/lib/api.ts`, `src/types/index.ts`)
 
-- `TaskTemplate`: add `category`, `default_support_role`,
-  `default_owner_person_id`, `default_support_person_id`, `sort_order`.
+- `TaskTemplate`: add `category`, `default_support_role`, `sort_order`.
 - `OpeningTask`: add `category`, `support_role`, `support_person_id`,
   `sort_order`.
-- `addPlaybookToSite`: copy `category` and support defaults onto generated
-  tasks; seed `sort_order` from template order.
+- New `SiteRole` type mirroring `opening_site_roles`.
+- `addPlaybookToSite`: copy `category` and `default_support_role` onto
+  generated tasks; seed `sort_order` from template order.
 - New: `listPeople()` (reads `restaurant_center_people`),
+  `listSiteRoles(siteId)` / `assignSiteRole(siteId, roleKey, person)` (upsert
+  on the unique key; null person clears the assignment),
+  `resolveAssignee(task, roles)` in a new `lib/assignment.ts` (implements the
+  §3.4 resolution chain — one function used by TaskRow, Team panel, My Tasks,
+  and the My Tasks filter toggle),
   `moveTask(id, dir)` (midpoint `sort_order` swap, optimistic),
   `renameCategory(siteId, playbookId, from, to)` (bulk update),
   `bucketForTask` in `lib/dates.ts`.
@@ -244,7 +307,7 @@ site-detail Tools menu — all manager-gated:
 |---|---|---|
 | Apply Template | **Apply playbook updates** | Diff-sync a site's generated tasks against current templates: insert added, update changed (title/description/category/offsets — skipping `date_overridden` dates), remove template-deleted tasks that are still incomplete. Report `{added, updated, removed}`. Match on `task_template_id` — more robust than Menu Center's normalized `section‖title` string match. |
 | Update "template" | **Update playbook from site** | Push a site's current tasks (titles, categories, owners, offsets back-computed from due dates where not overridden) back to the source playbook's templates. This is how the process itself improves with each opening — the core of what worked in Menu Center. |
-| Apply Owners | **Apply default owners** | Copy template default owner/support onto tasks, never blanking an existing assignment. |
+| Apply Owners | **Re-apply default roles** | Copy template `default_owner_role`/`default_support_role` back onto tasks whose roles were edited, never blanking an existing value. (Person assignment needs no tool at all — the role → person mapping in the Team panel resolves live, which is what Menu Center's Apply Owners button was compensating for.) |
 | Save As… | **Save as new playbook** | Snapshot a site's task set as a fresh playbook (e.g. a concept-specific GM variant). Bump `version` on the source semantics we already have. |
 | Auto-fill Dates | **Recalculate dates** | Already built. |
 
@@ -259,10 +322,11 @@ filter pills, add-task/add-section, reorder; `PlaybooksView` category grouping
 + edit UI. *Everything renders real content immediately thanks to the seeded
 categories.*
 
-**Phase 2 — people**
-People view (3.3) + owner/support columns (rest of 3.1/3.2); `PersonPicker`
-on Owner/Support; My Tasks toggle + cross-site My Tasks view; user→person
-resolution.
+**Phase 2 — people & roles**
+People view (3.3), `opening_site_roles` (3.4), and the owner/support columns
+(rest of 3.1/3.2); Team panel with per-role `PersonPicker` ("assign Camilla
+as GM"); resolved names/avatars in task rows with per-task override; My Tasks
+toggle + cross-site My Tasks view driven by the resolution chain.
 
 **Phase 3 — template sync**
 The §6 Tools operations, modeled on `launchTemplateStore.ts` but keyed on
@@ -289,3 +353,10 @@ data. Gates as usual: `npm run typecheck`, `npm run lint`.
 4. **Shared vs. per-app people view** (3.3): a per-app view is proposed for
    isolation; a single shared `cgops_launch_people` view serving both apps is
    the leaner option if we're comfortable coupling them.
+5. **Role vocabulary** (§3.4): role → person matching is by exact role
+   string, and roles are free text today ("General Manager" vs "GM" won't
+   match). Proposal keeps free text but has the Team panel and template forms
+   suggest from the roles already in use, so the vocabulary self-normalizes.
+   The stricter alternative — a fixed role enum — adds friction every time a
+   playbook needs a new role. *Recommendation: free text + suggestions;
+   revisit if drift shows up.*
