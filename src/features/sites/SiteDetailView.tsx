@@ -137,28 +137,30 @@ export function SiteDetailView({
       let t = initialTasks
       let asg = initialAssignments
 
-      // Every location needs every playbook: generate any missing ones on
-      // sight (idempotent — only inserts what isn't there yet). New library
-      // playbooks flow onto active openings with no manual step.
+      // Every location needs every playbook — and every template. Sweep ALL
+      // active playbooks through the idempotent generator, not just
+      // unattached ones: a playbook can be attached while templates were
+      // added to it later (that's how Chef sat at 0 tasks), and those new
+      // templates must flow onto active openings with no manual step.
       if (s && canManage && GENERATING_STATUSES.has(s.status)) {
-        const have = new Set(asg.map((a) => a.playbook_id))
-        const missing = pbs.filter((p) => !have.has(p.id))
-        if (missing.length > 0) {
-          let created = 0
-          for (const p of missing) {
-            const r = await addPlaybookToSite(s, p.id)
+        let created = 0
+        const touched = new Set<string>()
+        for (const p of pbs) {
+          const r = await addPlaybookToSite(s, p.id)
+          if (r.created > 0) {
             created += r.created
+            touched.add(p.id)
           }
+        }
+        if (created > 0) {
           const refreshed = await Promise.all([listTasks(siteId), listSitePlaybooks(siteId)])
           t = refreshed[0]
           asg = refreshed[1]
-          if (created > 0) {
-            setNotice(
-              `${created} task${created === 1 ? '' : 's'} generated from ${missing.length} playbook${
-                missing.length === 1 ? '' : 's'
-              } newly added to this opening.`,
-            )
-          }
+          setNotice(
+            `${created} task${created === 1 ? '' : 's'} generated from ${touched.size} playbook${
+              touched.size === 1 ? '' : 's'
+            } with new templates.`,
+          )
         }
       }
 

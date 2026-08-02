@@ -31,12 +31,12 @@ Examples:
 
 ## Generation
 
-**Every location gets every playbook.** When a manager opens an active
-opening (status planning / in progress / pre-opening / on hold), any active
-playbook not yet on the site is generated automatically — there is no manual
-"add a playbook" step. New playbooks in the library flow onto every active
-opening the next time it is viewed. Finished (`open`) and `cancelled` sites
-never auto-generate.
+**Every location gets every playbook — and every template.** When a manager
+opens an active opening (status planning / in progress / pre-opening / on
+hold), every active playbook is swept through the idempotent generator, so
+both new playbooks and new templates on existing playbooks flow onto the
+site automatically — there is no manual "add a playbook" step. Finished
+(`open`) and `cancelled` sites never auto-generate.
 
 For each playbook generated onto an opening:
 
