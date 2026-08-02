@@ -17,7 +17,6 @@ import {
   Upload,
   UserCheck,
   Users,
-  Wand2,
 } from 'lucide-react'
 import {
   addPlaybookToSite,
@@ -86,6 +85,9 @@ import {
 const GENERAL = 'General' // display name for tasks without a category
 const ONE_OFF = '__oneoff__'
 
+// Openings still in flight — finished/cancelled sites don't auto-generate.
+const GENERATING_STATUSES = new Set(['planning', 'in_progress', 'pre_opening', 'on_hold'])
+
 function taskPosition(t: OpeningTask): number {
   return t.sort_order ?? t.sequence
 }
@@ -118,12 +120,13 @@ export function SiteDetailView({
   const [busy, setBusy] = useState(false)
   const [dueFilter, setDueFilter] = useState<'all' | DueBucket>('all')
   const [myOnly, setMyOnly] = useState(false)
+  const [playbookFilter, setPlaybookFilter] = useState('all') // 'all' | playbook id | ONE_OFF
   const [saveAsFor, setSaveAsFor] = useState<{ playbookId: string | null } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [s, t, pbs, asg, ppl, rls] = await Promise.all([
+      const [s, initialTasks, pbs, initialAssignments, ppl, rls] = await Promise.all([
         getSite(siteId),
         listTasks(siteId),
         listPlaybooks(),
@@ -131,6 +134,34 @@ export function SiteDetailView({
         listPeople(),
         listSiteRoles(siteId),
       ])
+      let t = initialTasks
+      let asg = initialAssignments
+
+      // Every location needs every playbook: generate any missing ones on
+      // sight (idempotent — only inserts what isn't there yet). New library
+      // playbooks flow onto active openings with no manual step.
+      if (s && canManage && GENERATING_STATUSES.has(s.status)) {
+        const have = new Set(asg.map((a) => a.playbook_id))
+        const missing = pbs.filter((p) => !have.has(p.id))
+        if (missing.length > 0) {
+          let created = 0
+          for (const p of missing) {
+            const r = await addPlaybookToSite(s, p.id)
+            created += r.created
+          }
+          const refreshed = await Promise.all([listTasks(siteId), listSitePlaybooks(siteId)])
+          t = refreshed[0]
+          asg = refreshed[1]
+          if (created > 0) {
+            setNotice(
+              `${created} task${created === 1 ? '' : 's'} generated from ${missing.length} playbook${
+                missing.length === 1 ? '' : 's'
+              } newly added to this opening.`,
+            )
+          }
+        }
+      }
+
       setSite(s)
       setTasks(sortByPosition(t))
       setPlaybooks(pbs)
@@ -142,17 +173,13 @@ export function SiteDetailView({
     } finally {
       setLoading(false)
     }
-  }, [siteId])
+  }, [siteId, canManage])
 
   useEffect(() => {
     load()
   }, [load])
 
   const metrics = useMemo(() => taskMetrics(tasks), [tasks])
-  const assignedPlaybookIds = useMemo(
-    () => new Set(assignments.map((a) => a.playbook_id)),
-    [assignments],
-  )
   const playbookName = useCallback(
     (id: string | null) => playbooks.find((p) => p.id === id)?.name ?? 'Other tasks',
     [playbooks],
@@ -189,19 +216,30 @@ export function SiteDetailView({
     })
   }, [tasks, playbookName])
 
+  // The playbook filter scopes which block is shown — plus the progress bar
+  // and due-pill counts, so "Beverage Manager · 0/61 complete" reads true.
+  const scopedTasks = useMemo(
+    () =>
+      playbookFilter === 'all'
+        ? tasks
+        : tasks.filter((t) => (t.playbook_id ?? ONE_OFF) === playbookFilter),
+    [tasks, playbookFilter],
+  )
+  const scopedMetrics = useMemo(() => taskMetrics(scopedTasks), [scopedTasks])
+
   const bucketCounts = useMemo(() => {
     const counts: Record<DueBucket, number> = { overdue: 0, week: 0, fortnight: 0, later: 0 }
-    for (const t of tasks) {
+    for (const t of scopedTasks) {
       const b = bucketForTask(t)
       if (b) counts[b]++
     }
     return counts
-  }, [tasks])
+  }, [scopedTasks])
 
   const me = useMemo(() => buildCurrentUser(profile, people), [profile, people])
   const myCount = useMemo(
-    () => tasks.filter((t) => taskMatchesUser(t, roles, me)).length,
-    [tasks, roles, me],
+    () => scopedTasks.filter((t) => taskMatchesUser(t, roles, me)).length,
+    [scopedTasks, roles, me],
   )
 
   const filtering = dueFilter !== 'all' || myOnly
@@ -214,8 +252,8 @@ export function SiteDetailView({
     [dueFilter, myOnly, roles, me],
   )
   const visibleCount = useMemo(
-    () => (filtering ? tasks.filter(matchesFilter).length : tasks.length),
-    [tasks, filtering, matchesFilter],
+    () => (filtering ? scopedTasks.filter(matchesFilter).length : scopedTasks.length),
+    [scopedTasks, filtering, matchesFilter],
   )
 
   async function patchTask(id: string, patch: Partial<OpeningTask>) {
@@ -315,25 +353,6 @@ export function SiteDetailView({
     setNotice(
       'Site saved. If you changed an anchor date, use “Recalculate dates” to reschedule generated tasks.',
     )
-  }
-
-  async function handleAddPlaybook(playbookId: string) {
-    if (!site) return
-    setBusy(true)
-    setError(null)
-    try {
-      const res = await addPlaybookToSite(site, playbookId)
-      setNotice(
-        `${playbookName(playbookId)}: ${res.created} task${res.created === 1 ? '' : 's'} generated` +
-          (res.skipped ? `, ${res.skipped} already existed` : '') +
-          '.',
-      )
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not generate tasks.')
-    } finally {
-      setBusy(false)
-    }
   }
 
   async function runPlaybookTool(action: 'apply' | 'push' | 'roles', playbookId: string) {
@@ -438,8 +457,6 @@ export function SiteDetailView({
       </div>
     )
 
-  const unassigned = playbooks.filter((p) => !assignedPlaybookIds.has(p.id))
-  const trackedNames = assignments.map((a) => playbookName(a.playbook_id))
 
   return (
     <div>
@@ -458,11 +475,6 @@ export function SiteDetailView({
               {site.concept ?? 'Concept TBD'}
               {site.address ? ` · ${site.address}` : ''}
             </p>
-            {trackedNames.length > 0 && (
-              <p className="mt-1 text-xs text-charcoal/45">
-                Tracking: {trackedNames.join(' · ')}
-              </p>
-            )}
           </div>
           <div className="flex items-center gap-2">
             {tasks.length > 0 && (
@@ -584,37 +596,31 @@ export function SiteDetailView({
 
         {/* Task board — full width */}
         <div className="space-y-4">
-          {canManage && (
-            <Card className="p-4">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-sm font-semibold text-charcoal">Add a playbook</h2>
-                  <p className="mt-0.5 text-xs text-charcoal/55">
-                    Generates the playbook's tasks against this site's anchor
-                    dates. Re-adding never duplicates existing tasks.
-                  </p>
-                </div>
-                <AddPlaybook
-                  playbooks={unassigned}
-                  disabled={busy}
-                  onAdd={handleAddPlaybook}
-                />
-              </div>
-            </Card>
-          )}
-
           {tasks.length > 0 && (
             <>
               <div className="flex max-w-md items-center gap-3">
                 <div className="flex-1">
-                  <ProgressBar pct={metrics.completionPct} />
+                  <ProgressBar pct={scopedMetrics.completionPct} />
                 </div>
                 <span className="whitespace-nowrap text-xs font-medium text-charcoal/50">
-                  {metrics.complete}/{metrics.counted} complete
+                  {scopedMetrics.complete}/{scopedMetrics.counted} complete
                 </span>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={playbookFilter}
+                  onChange={(e) => setPlaybookFilter(e.target.value)}
+                  className="!w-auto !rounded-full !py-1.5 !text-xs"
+                  title="Filter by playbook"
+                >
+                  <option value="all">All playbooks</option>
+                  {groups.map((g) => (
+                    <option key={g.key} value={g.key}>
+                      {g.name}
+                    </option>
+                  ))}
+                </Select>
                 <FilterPill
                   label="All tasks"
                   active={dueFilter === 'all'}
@@ -639,8 +645,8 @@ export function SiteDetailView({
               title="No tasks yet"
               hint={
                 canManage
-                  ? 'Add a playbook above to generate its tasks, or add a one-off task below.'
-                  : 'Tasks appear once a playbook is added to this opening.'
+                  ? 'Playbook tasks generate automatically for active openings — set the anchor dates and refresh, or add a one-off task below.'
+                  : 'Playbook tasks generate automatically once a manager opens this page.'
               }
             />
           ) : filtering && visibleCount === 0 ? (
@@ -655,7 +661,9 @@ export function SiteDetailView({
             />
           ) : (
             <div className="space-y-6">
-              {groups.map((group) => (
+              {groups
+                .filter((g) => playbookFilter === 'all' || g.key === playbookFilter)
+                .map((group) => (
                 <PlaybookBlock
                   key={group.key}
                   name={group.name}
@@ -676,7 +684,7 @@ export function SiteDetailView({
                   onTool={runPlaybookTool}
                   onSaveAs={(playbookId) => setSaveAsFor({ playbookId })}
                 />
-              ))}
+                ))}
             </div>
           )}
 
@@ -1105,45 +1113,5 @@ function DateValue({ iso }: { iso: string | null }) {
         </span>
       )}
     </span>
-  )
-}
-
-function AddPlaybook({
-  playbooks,
-  disabled,
-  onAdd,
-}: {
-  playbooks: Playbook[]
-  disabled: boolean
-  onAdd: (id: string) => void
-}) {
-  const [selected, setSelected] = useState('')
-  if (playbooks.length === 0)
-    return <span className="text-xs text-charcoal/45">All playbooks added.</span>
-  return (
-    <div className="flex items-center gap-2">
-      <Select
-        value={selected}
-        onChange={(e) => setSelected(e.target.value)}
-        className="!w-auto"
-      >
-        <option value="">Select a playbook…</option>
-        {playbooks.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </Select>
-      <Button
-        variant="primary"
-        disabled={disabled || selected === ''}
-        onClick={() => {
-          if (selected) onAdd(selected)
-          setSelected('')
-        }}
-      >
-        <Wand2 className="h-4 w-4" /> Generate
-      </Button>
-    </div>
   )
 }
