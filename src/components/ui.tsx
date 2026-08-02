@@ -102,6 +102,11 @@ export function Field({
 const inputClass =
   'w-full rounded-md border border-surface-line bg-surface px-2.5 py-1.5 text-sm text-charcoal placeholder:text-charcoal/40 focus-visible:border-cg-orange'
 
+// Borderless until hovered/focused — for inline editing inside task rows,
+// where a field per cell would otherwise read as a wall of boxes.
+export const ghostInputClass =
+  'w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm text-charcoal placeholder:text-charcoal/35 transition-colors hover:border-surface-line focus:border-surface-line focus:bg-surface focus:outline-none'
+
 export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${inputClass} ${props.className ?? ''}`} />
 }
@@ -174,6 +179,27 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
     <div className="rounded-lg border border-dashed border-surface-line bg-surface-muted/40 px-6 py-10 text-center">
       <p className="text-sm font-medium text-charcoal/70">{title}</p>
       {hint && <p className="mx-auto mt-1 max-w-md text-sm text-charcoal/45">{hint}</p>}
+    </div>
+  )
+}
+
+export function Modal({
+  children,
+  onClose,
+  className = '',
+}: {
+  children: ReactNode
+  onClose: () => void
+  className?: string
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div
+        className={`relative w-full max-w-md rounded-xl border border-surface-line bg-surface p-5 shadow-xl ${className}`}
+      >
+        {children}
+      </div>
     </div>
   )
 }

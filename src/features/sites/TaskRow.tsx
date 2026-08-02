@@ -1,37 +1,52 @@
-// One opening task, editable inline. Managers can change status, owner role,
-// due date (which flags a manual override so recalculation leaves it alone),
-// priority/at-risk, and notes. Read-only users see the same information
-// without controls.
+// One opening task in the Menu Center row format: reorder arrows, checkbox,
+// inline-editable title with strikethrough on complete, ghost date input,
+// owner-role cell, and a right-hand cluster (at-risk flag, note, delete).
+// The checkbox is the primary interaction (complete ↔ not started); the
+// remaining statuses live in a compact chip menu so `blocked` and `N/A`
+// keep carrying information without cluttering the row.
 
-import { useState } from 'react'
-import { CheckCircle2, Flag, Lock } from 'lucide-react'
-import { Badge, Select, TextInput } from '../../components/ui'
-import { formatDate, isOverdue, relativeDays } from '../../lib/dates'
+import { useEffect, useRef, useState } from 'react'
+import { Check, ChevronDown, ChevronUp, CircleDashed, Flag, Lock, X } from 'lucide-react'
+import { Badge, TaskStatusBadge, ghostInputClass } from '../../components/ui'
+import { NotePopover } from '../../components/NotePopover'
+import { formatDate, isOverdue } from '../../lib/dates'
 import {
-  TASK_PRIORITIES,
-  TASK_STATUS_LABELS,
   TASK_STATUSES,
+  TASK_STATUS_LABELS,
   type OpeningTask,
-  type TaskPriority,
   type TaskStatus,
 } from '../../types'
+
+// Row and column-header grids must match; the header renders spacers for the
+// control and action clusters.
+export const TASK_GRID = 'sm:grid-cols-[3.5rem_minmax(0,1fr)_8.5rem_8rem_6rem]'
 
 export function TaskRow({
   task,
   canManage,
+  canMoveUp,
+  canMoveDown,
   onChange,
+  onDelete,
+  onMove,
 }: {
   task: OpeningTask
   canManage: boolean
+  canMoveUp: boolean
+  canMoveDown: boolean
   onChange: (patch: Partial<OpeningTask>) => void
+  onDelete: () => void
+  onMove: (dir: -1 | 1) => void
 }) {
-  const [notesOpen, setNotesOpen] = useState(false)
-  const overdue = isOverdue(task)
+  const [title, setTitle] = useState(task.title)
+  useEffect(() => setTitle(task.title), [task.title])
+
   const done = task.status === 'complete'
+  const na = task.status === 'not_applicable'
+  const overdue = isOverdue(task)
 
   function setStatus(status: TaskStatus) {
     const patch: Partial<OpeningTask> = { status }
-    // Stamp/clear completion metadata as the status crosses the finish line.
     if (status === 'complete' && !task.completed_at) {
       patch.completed_at = new Date().toISOString()
     }
@@ -41,142 +56,218 @@ export function TaskRow({
 
   return (
     <div
-      className={`border-b border-surface-line px-3 py-2.5 last:border-0 ${
-        done ? 'opacity-60' : ''
+      className={`grid grid-cols-1 items-center gap-x-2 rounded-lg border px-2 py-1 ${TASK_GRID} ${
+        done
+          ? 'border-success/20 bg-success/5'
+          : na
+            ? 'border-surface-line bg-surface-muted/50 opacity-60'
+            : 'border-surface-line bg-surface'
       }`}
     >
-      <div className="flex items-start gap-3">
+      {/* Reorder + complete */}
+      <div className="flex w-14 items-center gap-1">
+        {canManage && (
+          <div className="flex flex-col">
+            <button
+              onClick={() => onMove(-1)}
+              disabled={!canMoveUp}
+              className="p-0.5 text-charcoal/25 transition-colors hover:text-charcoal/70 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <ChevronUp className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => onMove(1)}
+              disabled={!canMoveDown}
+              className="p-0.5 text-charcoal/25 transition-colors hover:text-charcoal/70 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
         <button
           disabled={!canManage}
           onClick={() => setStatus(done ? 'not_started' : 'complete')}
-          title={done ? 'Mark not started' : 'Mark complete'}
-          className={`mt-0.5 shrink-0 rounded-full ${
-            done ? 'text-success' : 'text-charcoal/25 hover:text-success'
-          } disabled:hover:text-charcoal/25`}
+          title={done ? 'Mark incomplete' : 'Mark complete'}
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+            done
+              ? 'border-success bg-success'
+              : 'border-surface-line bg-surface enabled:hover:border-charcoal/40'
+          } disabled:cursor-default`}
         >
-          <CheckCircle2 className="h-5 w-5" />
+          {done && <Check className="h-3 w-3 text-white" />}
         </button>
+      </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`text-sm font-medium ${done ? 'line-through' : ''}`}>
+      {/* Title + secondary line */}
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          {canManage ? (
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={() => {
+                if (title !== task.title) onChange({ title })
+              }}
+              placeholder="Task description…"
+              className={`${ghostInputClass} ${done ? 'text-charcoal/45 line-through' : ''}`}
+            />
+          ) : (
+            <span
+              className={`px-2 py-1.5 text-sm ${done ? 'text-charcoal/45 line-through' : 'text-charcoal'}`}
+            >
               {task.title}
             </span>
-            {task.priority === 'high' && (
-              <Badge tone="warning">Required</Badge>
-            )}
-            {task.at_risk && (
-              <span className="inline-flex items-center gap-0.5 text-xs font-medium text-warning">
-                <Flag className="h-3 w-3" /> At risk
-              </span>
-            )}
-            {task.date_overridden && (
-              <span
-                className="inline-flex items-center gap-0.5 text-xs text-charcoal/40"
-                title="Due date set manually — recalculation will not change it"
-              >
-                <Lock className="h-3 w-3" /> manual date
-              </span>
-            )}
-          </div>
-
-          {task.description && (
-            <p className="mt-0.5 text-xs text-charcoal/55">{task.description}</p>
           )}
-
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-charcoal/60">
-            <span className={overdue ? 'font-medium text-danger' : ''}>
-              Due {formatDate(task.due_date)}
-              {task.due_date ? ` · ${relativeDays(task.due_date)}` : ' · unscheduled'}
-            </span>
-            {task.assigned_role && <span>Owner: {task.assigned_role}</span>}
-          </div>
-
-          {canManage && (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Select
-                value={task.status}
-                onChange={(e) => setStatus(e.target.value as TaskStatus)}
-                className="!w-auto py-1 text-xs"
-              >
-                {TASK_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {TASK_STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                value={task.priority}
-                onChange={(e) => onChange({ priority: e.target.value as TaskPriority })}
-                className="!w-auto py-1 text-xs"
-                title="Priority"
-              >
-                {TASK_PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </Select>
-              <label className="flex items-center gap-1 text-xs text-charcoal/60">
-                <input
-                  type="checkbox"
-                  checked={task.at_risk}
-                  onChange={(e) => onChange({ at_risk: e.target.checked })}
-                />
-                at risk
-              </label>
-              <TextInput
-                type="date"
-                value={task.due_date ?? ''}
-                onChange={(e) =>
-                  onChange({
-                    due_date: e.target.value === '' ? null : e.target.value,
-                    date_overridden: true,
-                  })
-                }
-                className="!w-auto py-1 text-xs"
-                title="Set due date (marks a manual override)"
-              />
-              <TextInput
-                defaultValue={task.assigned_role ?? ''}
-                onBlur={(e) => {
-                  const v = e.target.value.trim()
-                  if (v !== (task.assigned_role ?? ''))
-                    onChange({ assigned_role: v === '' ? null : v })
-                }}
-                placeholder="Owner role"
-                className="!w-32 py-1 text-xs"
-              />
-              <button
-                onClick={() => setNotesOpen((o) => !o)}
-                className="text-xs text-cg-orange hover:underline"
-              >
-                {task.notes ? 'Edit note' : 'Add note'}
-              </button>
-            </div>
-          )}
-
-          {(notesOpen || (!canManage && task.notes)) && (
-            <div className="mt-2">
-              {canManage ? (
-                <TextInput
-                  defaultValue={task.notes ?? ''}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim()
-                    if (v !== (task.notes ?? '')) onChange({ notes: v === '' ? null : v })
-                  }}
-                  placeholder="Note"
-                  className="text-xs"
-                />
-              ) : (
-                <p className="rounded-md bg-surface-muted px-2 py-1 text-xs text-charcoal/60">
-                  {task.notes}
-                </p>
-              )}
-            </div>
-          )}
+          {task.priority === 'high' && !done && <Badge tone="warning">Required</Badge>}
+          <StatusChip status={task.status} canManage={canManage} onSelect={setStatus} />
         </div>
+        {task.description && (
+          <p className="px-2 pb-1 text-xs text-charcoal/50">{task.description}</p>
+        )}
+        {!canManage && task.notes && (
+          <p className="mx-2 mb-1 rounded-md bg-surface-muted px-2 py-1 text-xs text-charcoal/60">
+            {task.notes}
+          </p>
+        )}
       </div>
+
+      {/* Due date */}
+      <div className="relative flex items-center">
+        {canManage ? (
+          <input
+            type="date"
+            value={task.due_date ?? ''}
+            onChange={(e) =>
+              onChange({
+                due_date: e.target.value === '' ? null : e.target.value,
+                date_overridden: true,
+              })
+            }
+            className={`${ghostInputClass} ${overdue ? '!text-danger font-medium' : ''}`}
+          />
+        ) : (
+          <span
+            className={`px-2 py-1.5 text-sm ${overdue ? 'font-medium text-danger' : 'text-charcoal/70'}`}
+          >
+            {formatDate(task.due_date)}
+          </span>
+        )}
+        {task.date_overridden && task.due_date && (
+          <Lock
+            className="pointer-events-none absolute right-1.5 h-3 w-3 text-charcoal/30"
+            aria-label="Due date set manually — recalculation will not change it"
+          />
+        )}
+      </div>
+
+      {/* Owner (role text in Phase 1; person resolution arrives with the
+          role-assignment phase) */}
+      {canManage ? (
+        <input
+          defaultValue={task.assigned_role ?? ''}
+          key={`owner-${task.id}-${task.assigned_role ?? ''}`}
+          onBlur={(e) => {
+            const v = e.target.value.trim()
+            if (v !== (task.assigned_role ?? '')) onChange({ assigned_role: v === '' ? null : v })
+          }}
+          placeholder="Owner"
+          className={ghostInputClass}
+        />
+      ) : (
+        <span className="truncate px-2 py-1.5 text-sm text-charcoal/70">
+          {task.assigned_role ?? '—'}
+        </span>
+      )}
+
+      {/* At-risk flag, note, delete */}
+      <div className="flex w-24 items-center justify-end gap-0.5 justify-self-end">
+        {canManage ? (
+          <button
+            onClick={() => onChange({ at_risk: !task.at_risk })}
+            title={task.at_risk ? 'Clear at-risk flag' : 'Flag as at risk'}
+            className={`rounded-md p-1.5 transition-colors ${
+              task.at_risk
+                ? 'text-warning hover:bg-warning/10'
+                : 'text-charcoal/25 hover:bg-surface-muted hover:text-charcoal/70'
+            }`}
+          >
+            <Flag className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          task.at_risk && <Flag className="h-3.5 w-3.5 text-warning" />
+        )}
+        {canManage && (
+          <>
+            <NotePopover note={task.notes} onSave={(notes) => onChange({ notes })} />
+            <button
+              onClick={onDelete}
+              title="Delete task"
+              className="rounded-md p-1.5 text-charcoal/25 transition-colors hover:bg-danger/10 hover:text-danger"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Compact entry point to the statuses the checkbox can't express. Shows as a
+// badge when one of them is active; otherwise (managers only) a subtle dashed
+// circle that opens the menu.
+function StatusChip({
+  status,
+  canManage,
+  onSelect,
+}: {
+  status: TaskStatus
+  canManage: boolean
+  onSelect: (s: TaskStatus) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const notable = status === 'in_progress' || status === 'blocked' || status === 'not_applicable'
+
+  useEffect(() => {
+    if (!open) return
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  if (!canManage) return notable ? <TaskStatusBadge status={status} /> : null
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title="Set status"
+        className={notable ? '' : 'rounded-md p-1 text-charcoal/25 transition-colors hover:bg-surface-muted hover:text-charcoal/70'}
+      >
+        {notable ? <TaskStatusBadge status={status} /> : <CircleDashed className="h-3.5 w-3.5" />}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-30 mt-1 w-36 rounded-lg border border-surface-line bg-surface py-1 shadow-lg">
+          {TASK_STATUSES.map((s) => (
+            <button
+              key={s}
+              onClick={() => {
+                setOpen(false)
+                onSelect(s)
+              }}
+              className={`block w-full px-3 py-1.5 text-left text-xs transition-colors hover:bg-surface-muted ${
+                s === status ? 'font-semibold text-charcoal' : 'text-charcoal/70'
+              }`}
+            >
+              {TASK_STATUS_LABELS[s]}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

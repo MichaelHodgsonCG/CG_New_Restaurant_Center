@@ -102,6 +102,7 @@ export async function listTemplates(playbookId: string): Promise<TaskTemplate[]>
     .from('opening_task_templates')
     .select('*')
     .eq('playbook_id', playbookId)
+    .order('sort_order', { nullsFirst: false })
     .order('sequence')
   if (error) throw error
   return (data ?? []) as TaskTemplate[]
@@ -112,7 +113,7 @@ export async function createTemplate(
     Partial<
       Pick<
         TaskTemplate,
-        'description' | 'default_owner_role' | 'required' | 'sequence'
+        'description' | 'category' | 'default_owner_role' | 'required' | 'sequence' | 'sort_order'
       >
     >,
 ): Promise<TaskTemplate> {
@@ -159,11 +160,13 @@ export async function listSitePlaybooks(siteId: string): Promise<SitePlaybook[]>
 // --- Tasks ---------------------------------------------------------------
 
 export async function listTasks(siteId: string): Promise<OpeningTask[]> {
+  // Board order: manual position within a section, not due date — the board
+  // groups by playbook → category and each section keeps its curated order.
   const { data, error } = await supabase
     .from('opening_tasks')
     .select('*')
     .eq('opening_site_id', siteId)
-    .order('due_date', { ascending: true, nullsFirst: false })
+    .order('sort_order', { nullsFirst: false })
     .order('sequence')
   if (error) throw error
   return (data ?? []) as OpeningTask[]
@@ -199,12 +202,16 @@ export async function createOneOffTask(
       Pick<
         OpeningTask,
         | 'description'
+        | 'category'
+        | 'playbook_id'
+        | 'site_playbook_id'
         | 'anchor_type'
         | 'offset_days'
         | 'due_date'
         | 'assigned_role'
         | 'priority'
         | 'sequence'
+        | 'sort_order'
       >
     >,
 ): Promise<OpeningTask> {
@@ -221,6 +228,44 @@ export async function createOneOffTask(
     .single()
   if (error) throw error
   return data as OpeningTask
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  const { error } = await supabase.from('opening_tasks').delete().eq('id', id)
+  if (error) throw error
+}
+
+/** Rename a section on a site's board: every task in the (playbook, category)
+ *  pair moves to the new name. Sections have no table of their own — they are
+ *  the distinct category values, so a rename is a bulk update. */
+export async function renameTaskCategory(
+  siteId: string,
+  playbookId: string | null,
+  from: string,
+  to: string,
+): Promise<void> {
+  let q = supabase
+    .from('opening_tasks')
+    .update({ category: to })
+    .eq('opening_site_id', siteId)
+    .eq('category', from)
+  q = playbookId === null ? q.is('playbook_id', null) : q.eq('playbook_id', playbookId)
+  const { error } = await q
+  if (error) throw error
+}
+
+/** Same rename for the template library, scoped to one playbook. */
+export async function renameTemplateCategory(
+  playbookId: string,
+  from: string,
+  to: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('opening_task_templates')
+    .update({ category: to })
+    .eq('playbook_id', playbookId)
+    .eq('category', from)
+  if (error) throw error
 }
 
 // --- Template generation -------------------------------------------------
@@ -286,6 +331,7 @@ export async function addPlaybookToSite(
       task_template_id: t.id,
       title: t.title,
       description: t.description,
+      category: t.category,
       anchor_type: t.anchor_type,
       offset_days: t.offset_days,
       due_date: computeDueDate(site, t.anchor_type, t.offset_days),
@@ -293,6 +339,7 @@ export async function addPlaybookToSite(
       assigned_role: t.default_owner_role,
       priority: t.required ? 'high' : 'normal',
       sequence: t.sequence,
+      sort_order: t.sort_order ?? t.sequence,
     }))
 
   if (rows.length > 0) {

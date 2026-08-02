@@ -123,11 +123,13 @@ export interface TaskTemplate {
   playbook_id: string
   title: string
   description: string | null
+  category: string | null // section header on the task board (null → "General")
   anchor_type: AnchorType
   offset_days: number
   default_owner_role: string | null
   required: boolean
   sequence: number
+  sort_order: number | null // fractional position within the category
   dependency_template_id: string | null
   active: boolean
   created_at: string
@@ -180,6 +182,7 @@ export interface OpeningTask {
   task_template_id: string | null // null for one-off tasks added directly to a site
   title: string
   description: string | null
+  category: string | null // section header, copied from the template at generation
   anchor_type: AnchorType | null
   offset_days: number | null
   due_date: string | null
@@ -190,6 +193,7 @@ export interface OpeningTask {
   priority: TaskPriority
   at_risk: boolean
   sequence: number
+  sort_order: number | null // fractional position within the category
   completed_at: string | null
   completed_by: string | null
   notes: string | null

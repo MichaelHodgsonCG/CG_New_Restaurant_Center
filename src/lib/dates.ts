@@ -78,6 +78,30 @@ export function isAtRisk(task: OpeningTask, from: string = todayIso()): boolean 
   return task.at_risk || task.status === 'blocked' || isOverdue(task, from)
 }
 
+// Due-date buckets driving the task-board filter pills (ported from Menu
+// Center's bucketForTask, which the launch process settled on): resolved
+// tasks belong to no bucket; unscheduled tasks are "later", not invisible.
+export const DUE_BUCKETS = ['overdue', 'week', 'fortnight', 'later'] as const
+export type DueBucket = (typeof DUE_BUCKETS)[number]
+
+export const DUE_BUCKET_LABELS: Record<DueBucket, string> = {
+  overdue: 'Overdue',
+  week: 'Due this week',
+  fortnight: 'Due in 14 days',
+  later: 'Later',
+}
+
+export function bucketForTask(task: OpeningTask, from: string = todayIso()): DueBucket | null {
+  if (task.status === 'complete' || task.status === 'not_applicable') return null
+  if (!task.due_date) return 'later'
+  const d = daysUntil(task.due_date, from)
+  if (d === null) return 'later'
+  if (d < 0) return 'overdue'
+  if (d <= 7) return 'week'
+  if (d <= 14) return 'fortnight'
+  return 'later'
+}
+
 /** Human-friendly date, e.g. "Jul 10, 2026". Empty dates render as an em dash. */
 export function formatDate(iso: string | null): string {
   if (!iso) return '—'
