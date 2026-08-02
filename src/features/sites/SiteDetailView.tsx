@@ -515,10 +515,10 @@ export function SiteDetailView({
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Left: construction milestones + staffing placeholder */}
-          <div className="space-y-4">
-            <Card className="p-4">
+        {/* Site context in one compact row so the task board below gets the
+            full page width. */}
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+          <Card className="p-4">
               <h2 className="text-sm font-semibold text-charcoal">Construction milestones</h2>
               <p className="mt-0.5 text-xs text-charcoal/50">
                 Reference only — construction is managed outside this system.
@@ -555,137 +555,136 @@ export function SiteDetailView({
                   </a>
                 )}
               </dl>
+          </Card>
+
+          <TeamPanel
+            siteId={siteId}
+            tasks={tasks}
+            roles={roles}
+            people={people}
+            canManage={canManage}
+            onRoleSaved={(saved) =>
+              setRoles((rs) => {
+                const rest = rs.filter((r) => r.id !== saved.id)
+                return [...rest, saved].sort((a, b) => a.role_key.localeCompare(b.role_key))
+              })
+            }
+            onError={setError}
+          />
+
+          {site.notes && (
+            <Card className="p-4">
+              <h2 className="text-sm font-semibold text-charcoal">Notes</h2>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-charcoal/75">
+                {site.notes}
+              </p>
             </Card>
+          )}
+        </div>
 
-            <TeamPanel
-              siteId={siteId}
-              tasks={tasks}
-              roles={roles}
-              people={people}
-              canManage={canManage}
-              onRoleSaved={(saved) =>
-                setRoles((rs) => {
-                  const rest = rs.filter((r) => r.id !== saved.id)
-                  return [...rest, saved].sort((a, b) => a.role_key.localeCompare(b.role_key))
-                })
-              }
-              onError={setError}
-            />
-
-            {site.notes && (
-              <Card className="p-4">
-                <h2 className="text-sm font-semibold text-charcoal">Notes</h2>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-charcoal/75">
-                  {site.notes}
-                </p>
-              </Card>
-            )}
-          </div>
-
-          {/* Right: playbooks + task board */}
-          <div className="space-y-4 lg:col-span-2">
-            {canManage && (
-              <Card className="p-4">
-                <div className="flex flex-wrap items-end justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-charcoal">Add a playbook</h2>
-                    <p className="mt-0.5 text-xs text-charcoal/55">
-                      Generates the playbook's tasks against this site's anchor
-                      dates. Re-adding never duplicates existing tasks.
-                    </p>
-                  </div>
-                  <AddPlaybook
-                    playbooks={unassigned}
-                    disabled={busy}
-                    onAdd={handleAddPlaybook}
-                  />
+        {/* Task board — full width */}
+        <div className="space-y-4">
+          {canManage && (
+            <Card className="p-4">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold text-charcoal">Add a playbook</h2>
+                  <p className="mt-0.5 text-xs text-charcoal/55">
+                    Generates the playbook's tasks against this site's anchor
+                    dates. Re-adding never duplicates existing tasks.
+                  </p>
                 </div>
-              </Card>
-            )}
+                <AddPlaybook
+                  playbooks={unassigned}
+                  disabled={busy}
+                  onAdd={handleAddPlaybook}
+                />
+              </div>
+            </Card>
+          )}
 
-            {tasks.length > 0 && (
-              <>
-                <div className="flex max-w-md items-center gap-3">
-                  <div className="flex-1">
-                    <ProgressBar pct={metrics.completionPct} />
-                  </div>
-                  <span className="whitespace-nowrap text-xs font-medium text-charcoal/50">
-                    {metrics.complete}/{metrics.counted} complete
-                  </span>
+          {tasks.length > 0 && (
+            <>
+              <div className="flex max-w-md items-center gap-3">
+                <div className="flex-1">
+                  <ProgressBar pct={metrics.completionPct} />
                 </div>
+                <span className="whitespace-nowrap text-xs font-medium text-charcoal/50">
+                  {metrics.complete}/{metrics.counted} complete
+                </span>
+              </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <FilterPill
+                  label="All tasks"
+                  active={dueFilter === 'all'}
+                  activeClass="border-charcoal bg-charcoal text-white"
+                  onClick={() => setDueFilter('all')}
+                />
+                {DUE_BUCKETS.map((b) => (
                   <FilterPill
-                    label="All tasks"
-                    active={dueFilter === 'all'}
-                    activeClass="border-charcoal bg-charcoal text-white"
-                    onClick={() => setDueFilter('all')}
-                  />
-                  {DUE_BUCKETS.map((b) => (
-                    <FilterPill
-                      key={b}
-                      label={`${DUE_BUCKET_LABELS[b]} (${bucketCounts[b]})`}
-                      active={dueFilter === b}
-                      activeClass={BUCKET_ACTIVE_CLASS[b]}
-                      onClick={() => setDueFilter(b)}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-
-            {tasks.length === 0 ? (
-              <EmptyState
-                title="No tasks yet"
-                hint={
-                  canManage
-                    ? 'Add a playbook above to generate its tasks, or add a one-off task below.'
-                    : 'Tasks appear once a playbook is added to this opening.'
-                }
-              />
-            ) : filtering && visibleCount === 0 ? (
-              <EmptyState
-                title={
-                  myOnly && userIsUnresolvable(me)
-                    ? "We couldn't match your login to a person, so we can't find your tasks yet."
-                    : myOnly
-                      ? 'No tasks assigned to you in this view.'
-                      : 'No open tasks in this timeframe.'
-                }
-              />
-            ) : (
-              <div className="space-y-6">
-                {groups.map((group) => (
-                  <PlaybookBlock
-                    key={group.key}
-                    name={group.name}
-                    playbookId={group.playbookId}
-                    tasks={group.tasks}
-                    sections={group.sections}
-                    people={people}
-                    roles={roles}
-                    canManage={canManage}
-                    filtering={filtering}
-                    busy={busy}
-                    matchesFilter={matchesFilter}
-                    onPatch={patchTask}
-                    onDelete={removeTask}
-                    onMove={moveTask}
-                    onAddTask={addTask}
-                    onRenameSection={renameSection}
-                    onTool={runPlaybookTool}
-                    onSaveAs={(playbookId) => setSaveAsFor({ playbookId })}
+                    key={b}
+                    label={`${DUE_BUCKET_LABELS[b]} (${bucketCounts[b]})`}
+                    active={dueFilter === b}
+                    activeClass={BUCKET_ACTIVE_CLASS[b]}
+                    onClick={() => setDueFilter(b)}
                   />
                 ))}
               </div>
-            )}
+            </>
+          )}
 
-            {canManage && !filtering && (
-              <Button variant="secondary" onClick={() => addTask(null, null)} disabled={busy}>
-                <Plus className="h-4 w-4" /> Add one-off task
-              </Button>
-            )}
-          </div>
+          {tasks.length === 0 ? (
+            <EmptyState
+              title="No tasks yet"
+              hint={
+                canManage
+                  ? 'Add a playbook above to generate its tasks, or add a one-off task below.'
+                  : 'Tasks appear once a playbook is added to this opening.'
+              }
+            />
+          ) : filtering && visibleCount === 0 ? (
+            <EmptyState
+              title={
+                myOnly && userIsUnresolvable(me)
+                  ? "We couldn't match your login to a person, so we can't find your tasks yet."
+                  : myOnly
+                    ? 'No tasks assigned to you in this view.'
+                    : 'No open tasks in this timeframe.'
+              }
+            />
+          ) : (
+            <div className="space-y-6">
+              {groups.map((group) => (
+                <PlaybookBlock
+                  key={group.key}
+                  name={group.name}
+                  playbookId={group.playbookId}
+                  tasks={group.tasks}
+                  sections={group.sections}
+                  people={people}
+                  roles={roles}
+                  canManage={canManage}
+                  filtering={filtering}
+                  busy={busy}
+                  matchesFilter={matchesFilter}
+                  onPatch={patchTask}
+                  onDelete={removeTask}
+                  onMove={moveTask}
+                  onAddTask={addTask}
+                  onRenameSection={renameSection}
+                  onTool={runPlaybookTool}
+                  onSaveAs={(playbookId) => setSaveAsFor({ playbookId })}
+                />
+              ))}
+            </div>
+          )}
+
+          {canManage && !filtering && (
+            <Button variant="secondary" onClick={() => addTask(null, null)} disabled={busy}>
+              <Plus className="h-4 w-4" /> Add one-off task
+            </Button>
+          )}
         </div>
       </div>
 
