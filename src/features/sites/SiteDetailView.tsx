@@ -8,11 +8,15 @@ import {
   ArrowLeft,
   ChevronDown,
   ExternalLink,
+  FilePlus,
+  MoreVertical,
   Pencil,
   Plus,
   RefreshCw,
   Settings,
+  Upload,
   UserCheck,
+  Users,
   Wand2,
 } from 'lucide-react'
 import {
@@ -35,6 +39,12 @@ import {
   taskMatchesUser,
   userIsUnresolvable,
 } from '../../lib/assignment'
+import {
+  applyPlaybookUpdates,
+  reapplyDefaultRoles,
+  savePlaybookFromSite,
+  updatePlaybookFromSite,
+} from '../../lib/playbookSync'
 import { taskMetrics } from '../../lib/metrics'
 import {
   bucketForTask,
@@ -49,7 +59,9 @@ import {
   Button,
   Card,
   EmptyState,
+  Field,
   Metric,
+  Modal,
   ProgressBar,
   Select,
   SiteStatusBadge,
@@ -106,6 +118,7 @@ export function SiteDetailView({
   const [busy, setBusy] = useState(false)
   const [dueFilter, setDueFilter] = useState<'all' | DueBucket>('all')
   const [myOnly, setMyOnly] = useState(false)
+  const [saveAsFor, setSaveAsFor] = useState<{ playbookId: string | null } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -318,6 +331,78 @@ export function SiteDetailView({
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not generate tasks.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function runPlaybookTool(action: 'apply' | 'push' | 'roles', playbookId: string) {
+    if (!site) return
+    const pbName = playbookName(playbookId)
+    if (
+      action === 'apply' &&
+      !window.confirm(
+        `Apply "${pbName}" template updates to this opening?\n\nNew templates become tasks, changed templates update their tasks (hand-set dates are preserved), and deactivated templates mark their open tasks N/A. Roles and people are not touched.`,
+      )
+    )
+      return
+    if (
+      action === 'push' &&
+      !window.confirm(
+        `Update the "${pbName}" playbook from this opening?\n\nTemplate titles, sections, order, role defaults and hand-set date offsets are pushed back to the library and will shape future openings. Hand-added tasks become new templates.`,
+      )
+    )
+      return
+    setBusy(true)
+    setError(null)
+    try {
+      if (action === 'apply') {
+        const r = await applyPlaybookUpdates(site, playbookId)
+        setNotice(
+          `${pbName}: ${r.added} task${r.added === 1 ? '' : 's'} added, ${r.updated} updated` +
+            (r.retired ? `, ${r.retired} retired to N/A (template deactivated)` : '') +
+            '.',
+        )
+      } else if (action === 'push') {
+        const r = await updatePlaybookFromSite(site, playbookId)
+        setNotice(
+          `"${pbName}" playbook updated: ${r.templatesUpdated} template${
+            r.templatesUpdated === 1 ? '' : 's'
+          } changed` +
+            (r.templatesAdded
+              ? `, ${r.templatesAdded} added from this opening's hand-added tasks`
+              : '') +
+            '.',
+        )
+      } else {
+        const r = await reapplyDefaultRoles(site, playbookId)
+        setNotice(
+          `${pbName}: default roles re-applied to ${r.updated} task${r.updated === 1 ? '' : 's'}.`,
+        )
+      }
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The playbook operation failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleSaveAs(playbookId: string | null, name: string) {
+    if (!site) return
+    setBusy(true)
+    setError(null)
+    try {
+      const r = await savePlaybookFromSite(site, playbookId, name)
+      setNotice(
+        `Playbook “${r.playbook.name}” created with ${r.templates} template${
+          r.templates === 1 ? '' : 's'
+        } — it's now available under Playbooks and for other openings.`,
+      )
+      setSaveAsFor(null)
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the playbook.')
     } finally {
       setBusy(false)
     }
@@ -581,12 +666,15 @@ export function SiteDetailView({
                     roles={roles}
                     canManage={canManage}
                     filtering={filtering}
+                    busy={busy}
                     matchesFilter={matchesFilter}
                     onPatch={patchTask}
                     onDelete={removeTask}
                     onMove={moveTask}
                     onAddTask={addTask}
                     onRenameSection={renameSection}
+                    onTool={runPlaybookTool}
+                    onSaveAs={(playbookId) => setSaveAsFor({ playbookId })}
                   />
                 ))}
               </div>
@@ -608,7 +696,57 @@ export function SiteDetailView({
           onSubmit={handleEditSubmit}
         />
       )}
+      {saveAsFor && (
+        <SaveAsPlaybookModal
+          sourceName={saveAsFor.playbookId ? playbookName(saveAsFor.playbookId) : 'Other tasks'}
+          busy={busy}
+          onCancel={() => setSaveAsFor(null)}
+          onSubmit={(name) => handleSaveAs(saveAsFor.playbookId, name)}
+        />
+      )}
     </div>
+  )
+}
+
+function SaveAsPlaybookModal({
+  sourceName,
+  busy,
+  onCancel,
+  onSubmit,
+}: {
+  sourceName: string
+  busy: boolean
+  onCancel: () => void
+  onSubmit: (name: string) => void
+}) {
+  const [name, setName] = useState('')
+  return (
+    <Modal onClose={onCancel}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (name.trim() !== '') onSubmit(name.trim())
+        }}
+      >
+        <h2 className="mb-1 font-semibold">Save as new playbook</h2>
+        <p className="mb-3 text-xs text-charcoal/55">
+          Snapshots the “{sourceName}” tasks on this opening as a reusable
+          playbook (e.g. a concept-specific variant). This opening is not
+          changed.
+        </p>
+        <Field label="Playbook name" hint="e.g. General Manager — Beertown variant">
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        </Field>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" disabled={busy || name.trim() === ''}>
+            {busy ? 'Saving…' : 'Create playbook'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -653,12 +791,15 @@ function PlaybookBlock({
   roles,
   canManage,
   filtering,
+  busy,
   matchesFilter,
   onPatch,
   onDelete,
   onMove,
   onAddTask,
   onRenameSection,
+  onTool,
+  onSaveAs,
 }: {
   name: string
   playbookId: string | null
@@ -668,12 +809,15 @@ function PlaybookBlock({
   roles: SiteRole[]
   canManage: boolean
   filtering: boolean
+  busy: boolean
   matchesFilter: (t: OpeningTask) => boolean
   onPatch: (id: string, patch: Partial<OpeningTask>) => void
   onDelete: (id: string) => void
   onMove: (task: OpeningTask, dir: -1 | 1) => void
   onAddTask: (playbookId: string | null, category: string | null) => void
   onRenameSection: (playbookId: string | null, from: string, to: string) => void
+  onTool: (action: 'apply' | 'push' | 'roles', playbookId: string) => void
+  onSaveAs: (playbookId: string | null) => void
 }) {
   const [collapsed, setCollapsed] = useState(false)
   const [newSection, setNewSection] = useState('')
@@ -689,19 +833,29 @@ function PlaybookBlock({
 
   return (
     <div>
-      <button
-        onClick={() => setCollapsed((c) => !c)}
-        className="flex w-full items-center gap-2 pb-2"
-        title={collapsed ? 'Expand' : 'Collapse'}
-      >
-        <ChevronDown
-          className={`h-4 w-4 text-charcoal/40 transition-transform ${collapsed ? '-rotate-90' : ''}`}
-        />
-        <h2 className="text-sm font-semibold text-charcoal">{name}</h2>
-        <span className="ml-auto text-xs tabular-nums text-charcoal/40">
+      <div className="flex w-full items-center gap-2 pb-2">
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          title={collapsed ? 'Expand' : 'Collapse'}
+        >
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-charcoal/40 transition-transform ${collapsed ? '-rotate-90' : ''}`}
+          />
+          <h2 className="truncate text-sm font-semibold text-charcoal">{name}</h2>
+        </button>
+        <span className="text-xs tabular-nums text-charcoal/40">
           {complete}/{counted}
         </span>
-      </button>
+        {canManage && !filtering && (
+          <BlockMenu
+            playbookId={playbookId}
+            busy={busy}
+            onTool={onTool}
+            onSaveAs={() => onSaveAs(playbookId)}
+          />
+        )}
+      </div>
 
       {!collapsed && (
         <div className="space-y-5 pl-1">
@@ -785,6 +939,82 @@ function PlaybookBlock({
               </Button>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Per-playbook sync tools (the Menu Center Tools menu, scoped to one block).
+// The one-off "Other tasks" block only offers the snapshot.
+function BlockMenu({
+  playbookId,
+  busy,
+  onTool,
+  onSaveAs,
+}: {
+  playbookId: string | null
+  busy: boolean
+  onTool: (action: 'apply' | 'push' | 'roles', playbookId: string) => void
+  onSaveAs: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  function run(fn: () => void) {
+    setOpen(false)
+    fn()
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title="Playbook tools"
+        className="rounded-md p-1 text-charcoal/35 transition-colors hover:bg-surface-muted hover:text-charcoal/70"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-60 rounded-lg border border-surface-line bg-surface py-1 shadow-lg">
+          {playbookId && (
+            <>
+              <ToolItem
+                icon={<RefreshCw className="h-3.5 w-3.5" />}
+                label="Apply playbook updates"
+                disabled={busy}
+                onClick={() => run(() => onTool('apply', playbookId))}
+              />
+              <ToolItem
+                icon={<Upload className="h-3.5 w-3.5" />}
+                label="Update playbook from this opening"
+                disabled={busy}
+                onClick={() => run(() => onTool('push', playbookId))}
+              />
+              <ToolItem
+                icon={<Users className="h-3.5 w-3.5" />}
+                label="Re-apply default roles"
+                disabled={busy}
+                onClick={() => run(() => onTool('roles', playbookId))}
+              />
+              <hr className="my-1 border-surface-line" />
+            </>
+          )}
+          <ToolItem
+            icon={<FilePlus className="h-3.5 w-3.5" />}
+            label="Save as new playbook…"
+            disabled={busy}
+            onClick={() => run(onSaveAs)}
+          />
         </div>
       )}
     </div>
