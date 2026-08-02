@@ -11,12 +11,14 @@ import {
   createPlaybook,
   createTemplate,
   deleteTemplate,
+  listPeople,
   listPlaybooks,
   listTemplates,
   renameTemplateCategory,
   updatePlaybook,
   updateTemplate,
 } from '../../lib/api'
+import { Avatar, PersonPicker } from '../../components/PersonPicker'
 import {
   Badge,
   Button,
@@ -35,10 +37,14 @@ import {
   ANCHOR_TYPES,
   type AnchorType,
   type Playbook,
+  type RosterPerson,
   type TaskTemplate,
 } from '../../types'
 
 const GENERAL = 'General' // display name for templates without a category
+
+const pickerInputClass =
+  'w-full rounded-md border border-surface-line bg-surface px-2.5 py-1.5 text-sm text-charcoal placeholder:text-charcoal/40 focus:outline-none focus-visible:border-cg-orange'
 
 function templatePosition(t: TaskTemplate): number {
   return t.sort_order ?? t.sequence
@@ -48,10 +54,17 @@ export function PlaybooksView({ canManage }: { canManage: boolean }) {
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [templates, setTemplates] = useState<TaskTemplate[]>([])
+  const [people, setPeople] = useState<RosterPerson[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [addingPlaybook, setAddingPlaybook] = useState(false)
   const [editingPlaybook, setEditingPlaybook] = useState(false)
+
+  useEffect(() => {
+    listPeople()
+      .then(setPeople)
+      .catch(() => setPeople([])) // picker degrades to free text
+  }, [])
 
   const loadPlaybooks = useCallback(async () => {
     try {
@@ -155,6 +168,7 @@ export function PlaybooksView({ canManage }: { canManage: boolean }) {
                 <TemplateList
                   playbook={selected}
                   templates={templates}
+                  people={people}
                   canManage={canManage}
                   onChange={loadTemplates}
                   onEditPlaybook={() => setEditingPlaybook(true)}
@@ -185,12 +199,14 @@ export function PlaybooksView({ canManage }: { canManage: boolean }) {
 function TemplateList({
   playbook,
   templates,
+  people,
   canManage,
   onChange,
   onEditPlaybook,
 }: {
   playbook: Playbook
   templates: TaskTemplate[]
+  people: RosterPerson[]
   canManage: boolean
   onChange: () => void
   onEditPlaybook: () => void
@@ -266,6 +282,7 @@ function TemplateList({
       {canManage && adding && (
         <TemplateForm
           categories={categories}
+          people={people}
           nextSequence={templates.length}
           nextPosition={
             templates.length === 0 ? 1 : Math.max(...templates.map(templatePosition)) + 1
@@ -304,7 +321,7 @@ function TemplateList({
                     <th className="px-3 py-2 font-medium">Task</th>
                     <th className="px-3 py-2 font-medium">Anchor</th>
                     <th className="px-3 py-2 font-medium">Offset</th>
-                    <th className="px-3 py-2 font-medium">Owner role</th>
+                    <th className="px-3 py-2 font-medium">Owner</th>
                     <th className="px-3 py-2 font-medium">Req.</th>
                     {canManage && <th className="px-3 py-2" />}
                   </tr>
@@ -317,6 +334,7 @@ function TemplateList({
                           <TemplateForm
                             template={t}
                             categories={categories}
+                            people={people}
                             onCancel={() => setEditingId(null)}
                             onSubmit={async (values) => {
                               await updateTemplate(t.id, values)
@@ -361,10 +379,20 @@ function TemplateList({
                           {offsetLabel(t.offset_days)}
                         </td>
                         <td className="px-3 py-2 text-charcoal/70">
-                          {t.default_owner_role ?? '—'}
+                          <DefaultAssignee
+                            text={t.default_owner_role}
+                            personId={t.default_owner_person_id}
+                            people={people}
+                          />
                           {t.default_support_role && (
-                            <div className="text-xs text-charcoal/45">
-                              Support: {t.default_support_role}
+                            <div className="mt-0.5 flex items-center gap-1 text-xs text-charcoal/45">
+                              Support:{' '}
+                              <DefaultAssignee
+                                text={t.default_support_role}
+                                personId={t.default_support_person_id}
+                                people={people}
+                                size={14}
+                              />
                             </div>
                           )}
                         </td>
@@ -414,6 +442,30 @@ function offsetLabel(days: number): string {
   return days < 0 ? `${Math.abs(days)}d before` : `${days}d after`
 }
 
+// Default owner/support display: avatar + name when a person is linked,
+// plain role text otherwise.
+function DefaultAssignee({
+  text,
+  personId,
+  people,
+  size = 18,
+}: {
+  text: string | null
+  personId: string | null
+  people: RosterPerson[]
+  size?: number
+}) {
+  if (!text) return <>—</>
+  const person = personId ? people.find((p) => p.id === personId) : undefined
+  if (!person) return <>{text}</>
+  return (
+    <span className="inline-flex items-center gap-1.5 align-middle">
+      <Avatar name={person.name} photoUrl={person.photo_url} size={size} />
+      {text}
+    </span>
+  )
+}
+
 interface TemplateFormValues {
   title: string
   description: string | null
@@ -421,7 +473,9 @@ interface TemplateFormValues {
   anchor_type: AnchorType
   offset_days: number
   default_owner_role: string | null
+  default_owner_person_id: string | null
   default_support_role: string | null
+  default_support_person_id: string | null
   required: boolean
   sequence?: number
   sort_order?: number
@@ -431,6 +485,7 @@ interface TemplateFormValues {
 function TemplateForm({
   template,
   categories,
+  people,
   nextSequence,
   nextPosition,
   onCancel,
@@ -438,6 +493,7 @@ function TemplateForm({
 }: {
   template?: TaskTemplate
   categories: string[]
+  people: RosterPerson[]
   nextSequence?: number
   nextPosition?: number
   onCancel: () => void
@@ -448,8 +504,14 @@ function TemplateForm({
   const [category, setCategory] = useState(template?.category ?? '')
   const [anchor, setAnchor] = useState<AnchorType>(template?.anchor_type ?? 'opening_date')
   const [offset, setOffset] = useState(String(template?.offset_days ?? -14))
-  const [role, setRole] = useState(template?.default_owner_role ?? '')
-  const [supportRole, setSupportRole] = useState(template?.default_support_role ?? '')
+  const [owner, setOwner] = useState({
+    text: template?.default_owner_role ?? '',
+    personId: template?.default_owner_person_id ?? null,
+  })
+  const [support, setSupport] = useState({
+    text: template?.default_support_role ?? '',
+    personId: template?.default_support_person_id ?? null,
+  })
   const [required, setRequired] = useState(template?.required ?? false)
   const [saving, setSaving] = useState(false)
 
@@ -464,8 +526,10 @@ function TemplateForm({
         category: category.trim() === '' ? null : category.trim(),
         anchor_type: anchor,
         offset_days: Number.parseInt(offset, 10) || 0,
-        default_owner_role: role.trim() === '' ? null : role.trim(),
-        default_support_role: supportRole.trim() === '' ? null : supportRole.trim(),
+        default_owner_role: owner.text.trim() === '' ? null : owner.text.trim(),
+        default_owner_person_id: owner.text.trim() === '' ? null : owner.personId,
+        default_support_role: support.text.trim() === '' ? null : support.text.trim(),
+        default_support_person_id: support.text.trim() === '' ? null : support.personId,
         required,
       }
       if (!template) {
@@ -524,18 +588,27 @@ function TemplateForm({
             onChange={(e) => setOffset(e.target.value)}
           />
         </Field>
-        <Field label="Default owner role">
-          <TextInput
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            placeholder="e.g. General Manager"
+        <Field
+          label="Default owner"
+          hint="A role (resolved per opening via the Team panel) or a named person for HQ-owned tasks."
+        >
+          <PersonPicker
+            value={owner.text}
+            personId={owner.personId}
+            people={people}
+            placeholder="e.g. General Manager, or Darryl"
+            className={pickerInputClass}
+            onChange={setOwner}
           />
         </Field>
-        <Field label="Default support role (optional)">
-          <TextInput
-            value={supportRole}
-            onChange={(e) => setSupportRole(e.target.value)}
-            placeholder="e.g. Regional"
+        <Field label="Default support (optional)">
+          <PersonPicker
+            value={support.text}
+            personId={support.personId}
+            people={people}
+            placeholder="Role or person"
+            className={pickerInputClass}
+            onChange={setSupport}
           />
         </Field>
         <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-charcoal/70">

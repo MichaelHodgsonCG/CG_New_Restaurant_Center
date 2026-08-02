@@ -126,8 +126,10 @@ export interface TaskTemplate {
   category: string | null // section header on the task board (null → "General")
   anchor_type: AnchorType
   offset_days: number
-  default_owner_role: string | null
+  default_owner_role: string | null // role text OR a person's name (hybrid, like task rows)
+  default_owner_person_id: string | null // soft ref → People Center; copied onto tasks at generation
   default_support_role: string | null
+  default_support_person_id: string | null
   required: boolean
   sequence: number
   sort_order: number | null // fractional position within the category

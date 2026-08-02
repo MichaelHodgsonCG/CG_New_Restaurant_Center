@@ -118,7 +118,9 @@ export async function createTemplate(
         | 'description'
         | 'category'
         | 'default_owner_role'
+        | 'default_owner_person_id'
         | 'default_support_role'
+        | 'default_support_person_id'
         | 'required'
         | 'sequence'
         | 'sort_order'
@@ -345,7 +347,9 @@ export async function addPlaybookToSite(
       due_date: computeDueDate(site, t.anchor_type, t.offset_days),
       date_overridden: false,
       assigned_role: t.default_owner_role,
+      assigned_person_id: t.default_owner_person_id,
       support_role: t.default_support_role,
+      support_person_id: t.default_support_person_id,
       priority: t.required ? 'high' : 'normal',
       sequence: t.sequence,
       sort_order: t.sort_order ?? t.sequence,

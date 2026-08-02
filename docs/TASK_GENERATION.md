@@ -37,8 +37,12 @@ When a playbook is added to an opening (Opening Detail → *Add a playbook*):
    site + playbook.
 2. Each **active** template in the playbook becomes an `opening_tasks` row.
 3. The due date is computed from the site's anchor date + the template offset.
-4. `date_overridden` starts `false`; `assigned_role` copies the template's
-   `default_owner_role`; `priority` starts `high` for required templates.
+4. `date_overridden` starts `false`; the owner/support default copies over —
+   role text (`default_owner_role` → `assigned_role`) and, when the template
+   names a person (HQ lists), the person link
+   (`default_owner_person_id` → `assigned_person_id`), so named defaults land
+   directly in that person's My Tasks with no Team-panel step; `priority`
+   starts `high` for required templates.
 5. `category` copies from the template — it becomes the task's section header
    on the board — and `sort_order` copies the template's position so sections
    render in curated order. Reordering on the board swaps `sort_order` values
@@ -120,9 +124,11 @@ implemented in `src/lib/playbookSync.ts` and keyed on `task_template_id`:
 - **Update playbook from this opening** (site → playbook): pushes titles,
   descriptions, sections, curated order, role defaults, and offsets
   back-computed from hand-set due dates into the library, shaping future
-  openings. Role defaults are only taken from tasks *without* a person link —
-  a picked person's name is not a role. Hand-added tasks in the block are
-  promoted to templates and linked. Additive: never deactivates or deletes
+  openings. Role-text defaults are only taken from tasks *without* a person
+  link — a per-site person override never overwrites an existing template's
+  default (named defaults are curated in the library). Hand-added tasks in
+  the block are promoted to templates and linked, carrying their assignee
+  (role or named person) with them. Additive: never deactivates or deletes
   templates.
 - **Re-apply default roles** (playbook → site): copies template default
   owner/support roles onto tasks; never blanks a value, never touches
