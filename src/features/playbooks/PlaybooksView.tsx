@@ -1,9 +1,9 @@
-// Role Playbooks — reusable groups of task templates for a role or
-// department (GM, Chef, IT, Marketing, …). "Playbook" is the user-facing
-// word; the underlying model is opening_playbooks + opening_task_templates.
-// This is where the reusable library is curated, before it is generated
-// onto a specific opening. Templates are grouped into category sections —
-// the same sections the site task board renders.
+// Playbook Editor — where the reusable playbooks (GM, Chef, Regional, …)
+// are curated before their templates generate onto every opening
+// automatically. One playbook at a time, picked from a dropdown, with the
+// full page width for editing. Templates are grouped into category
+// sections — the same sections the site task board renders. Underlying
+// model: opening_playbooks + opening_task_templates.
 
 import { useCallback, useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react'
@@ -115,8 +115,8 @@ export function PlaybooksView({ canManage }: { canManage: boolean }) {
   return (
     <div>
       <PageHeader
-        title="Role Playbooks"
-        subtitle="Reusable task templates, generated onto each opening."
+        title="Playbook Editor"
+        subtitle="Curate each playbook's templates — they generate onto every opening automatically."
         actions={
           canManage ? (
             <Button variant="primary" onClick={() => setAddingPlaybook(true)}>
@@ -140,42 +140,31 @@ export function PlaybooksView({ canManage }: { canManage: boolean }) {
             hint={canManage ? 'Create a playbook to start building its task templates.' : undefined}
           />
         ) : (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-            {/* Playbook list */}
-            <Card className="h-fit overflow-hidden lg:col-span-1">
-              <ul>
-                {playbooks.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      onClick={() => setSelectedId(p.id)}
-                      className={`flex w-full items-center justify-between gap-2 border-b border-surface-line px-3 py-2.5 text-left text-sm last:border-0 ${
-                        p.id === selectedId
-                          ? 'bg-cg-orange-soft font-medium text-cg-orange'
-                          : 'hover:bg-surface-muted'
-                      }`}
-                    >
-                      <span className="truncate">{p.name}</span>
-                      {!p.active && <Badge tone="neutral">inactive</Badge>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-
-            {/* Templates for the selected playbook */}
-            <div className="lg:col-span-3">
-              {selected && (
-                <TemplateList
-                  playbook={selected}
-                  templates={templates}
-                  people={people}
-                  canManage={canManage}
-                  onChange={loadTemplates}
-                  onEditPlaybook={() => setEditingPlaybook(true)}
-                />
-              )}
-            </div>
-          </div>
+          selected && (
+            <TemplateList
+              playbook={selected}
+              templates={templates}
+              people={people}
+              canManage={canManage}
+              onChange={loadTemplates}
+              onEditPlaybook={() => setEditingPlaybook(true)}
+              picker={
+                <Select
+                  value={selectedId ?? ''}
+                  onChange={(e) => setSelectedId(e.target.value)}
+                  className="!w-auto min-w-64 font-medium"
+                  title="Choose a playbook to edit"
+                >
+                  {playbooks.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.active ? '' : ' (inactive)'}
+                    </option>
+                  ))}
+                </Select>
+              }
+            />
+          )
         )}
       </div>
 
@@ -203,6 +192,7 @@ function TemplateList({
   canManage,
   onChange,
   onEditPlaybook,
+  picker,
 }: {
   playbook: Playbook
   templates: TaskTemplate[]
@@ -210,6 +200,7 @@ function TemplateList({
   canManage: boolean
   onChange: () => void
   onEditPlaybook: () => void
+  picker: React.ReactNode
 }) {
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -254,28 +245,30 @@ function TemplateList({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-1.5">
-            <h2 className="font-semibold text-charcoal">{playbook.name}</h2>
-            {canManage && (
-              <button
-                onClick={onEditPlaybook}
-                title="Edit playbook"
-                className="rounded p-1 text-charcoal/30 transition-colors hover:text-charcoal/70"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-          {playbook.description && (
-            <p className="text-sm text-charcoal/55">{playbook.description}</p>
-          )}
-        </div>
+      {/* Picker row — the dropdown IS the title */}
+      <div className="flex flex-wrap items-center gap-2">
+        {picker}
         {canManage && (
-          <Button variant="secondary" onClick={() => setAdding((a) => !a)}>
-            <Plus className="h-4 w-4" /> Add template
-          </Button>
+          <button
+            onClick={onEditPlaybook}
+            title="Edit playbook name, description, active"
+            className="rounded p-1.5 text-charcoal/30 transition-colors hover:text-charcoal/70"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        )}
+        {!playbook.active && <Badge tone="neutral">inactive</Badge>}
+        {playbook.description && (
+          <span className="min-w-0 truncate text-sm text-charcoal/55">
+            {playbook.description}
+          </span>
+        )}
+        {canManage && (
+          <div className="ml-auto">
+            <Button variant="secondary" onClick={() => setAdding((a) => !a)}>
+              <Plus className="h-4 w-4" /> Add template
+            </Button>
+          </div>
         )}
       </div>
 
