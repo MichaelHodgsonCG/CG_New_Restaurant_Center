@@ -27,7 +27,7 @@ const NAV: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { view: 'sites', label: 'Opening Sites', icon: Building2 },
   { view: 'mytasks', label: 'My Tasks', icon: UserCheck },
-  { view: 'playbooks', label: 'Playbooks', icon: BookOpen },
+  { view: 'playbooks', label: 'Playbook Editor', icon: BookOpen },
   { view: 'readiness', label: 'Readiness', icon: ListChecks },
 ]
 
