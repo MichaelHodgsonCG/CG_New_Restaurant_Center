@@ -12,6 +12,7 @@ import {
   Plus,
   RefreshCw,
   Settings,
+  UserCheck,
   Wand2,
 } from 'lucide-react'
 import {
@@ -19,14 +20,21 @@ import {
   createOneOffTask,
   deleteTask,
   getSite,
+  listPeople,
   listPlaybooks,
   listSitePlaybooks,
+  listSiteRoles,
   listTasks,
   recalculateDueDates,
   renameTaskCategory,
   updateSite,
   updateTask,
 } from '../../lib/api'
+import {
+  buildCurrentUser,
+  taskMatchesUser,
+  userIsUnresolvable,
+} from '../../lib/assignment'
 import { taskMetrics } from '../../lib/metrics'
 import {
   bucketForTask,
@@ -50,13 +58,17 @@ import {
 import { SectionHeader } from '../../components/SectionHeader'
 import { SiteFormModal } from './SiteFormModal'
 import { TASK_GRID, TaskRow } from './TaskRow'
+import { TeamPanel } from './TeamPanel'
 import {
   HANDOVER_STATUS_LABELS,
   type OpeningSite,
   type OpeningSiteInput,
   type OpeningTask,
   type Playbook,
+  type Profile,
+  type RosterPerson,
   type SitePlaybook,
+  type SiteRole,
 } from '../../types'
 
 const GENERAL = 'General' // display name for tasks without a category
@@ -72,10 +84,12 @@ function sortByPosition(tasks: OpeningTask[]): OpeningTask[] {
 
 export function SiteDetailView({
   siteId,
+  profile,
   canManage,
   onBack,
 }: {
   siteId: string
+  profile: Profile | null
   canManage: boolean
   onBack: () => void
 }) {
@@ -83,26 +97,33 @@ export function SiteDetailView({
   const [tasks, setTasks] = useState<OpeningTask[]>([])
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [assignments, setAssignments] = useState<SitePlaybook[]>([])
+  const [people, setPeople] = useState<RosterPerson[]>([])
+  const [roles, setRoles] = useState<SiteRole[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [dueFilter, setDueFilter] = useState<'all' | DueBucket>('all')
+  const [myOnly, setMyOnly] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [s, t, pbs, asg] = await Promise.all([
+      const [s, t, pbs, asg, ppl, rls] = await Promise.all([
         getSite(siteId),
         listTasks(siteId),
         listPlaybooks(),
         listSitePlaybooks(siteId),
+        listPeople(),
+        listSiteRoles(siteId),
       ])
       setSite(s)
       setTasks(sortByPosition(t))
       setPlaybooks(pbs)
       setAssignments(asg)
+      setPeople(ppl)
+      setRoles(rls)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the site.')
     } finally {
@@ -164,10 +185,20 @@ export function SiteDetailView({
     return counts
   }, [tasks])
 
-  const filtering = dueFilter !== 'all'
+  const me = useMemo(() => buildCurrentUser(profile, people), [profile, people])
+  const myCount = useMemo(
+    () => tasks.filter((t) => taskMatchesUser(t, roles, me)).length,
+    [tasks, roles, me],
+  )
+
+  const filtering = dueFilter !== 'all' || myOnly
   const matchesFilter = useCallback(
-    (t: OpeningTask) => dueFilter === 'all' || bucketForTask(t) === dueFilter,
-    [dueFilter],
+    (t: OpeningTask) => {
+      if (myOnly && !taskMatchesUser(t, roles, me)) return false
+      if (dueFilter !== 'all' && bucketForTask(t) !== dueFilter) return false
+      return true
+    },
+    [dueFilter, myOnly, roles, me],
   )
   const visibleCount = useMemo(
     () => (filtering ? tasks.filter(matchesFilter).length : tasks.length),
@@ -348,13 +379,28 @@ export function SiteDetailView({
               </p>
             )}
           </div>
-          {canManage && (
-            <ToolsMenu
-              busy={busy}
-              onRecalc={handleRecalc}
-              onEdit={() => setEditing(true)}
-            />
-          )}
+          <div className="flex items-center gap-2">
+            {tasks.length > 0 && (
+              <Button
+                variant="secondary"
+                onClick={() => setMyOnly((v) => !v)}
+                title="Show only tasks you own or support"
+                className={
+                  myOnly ? '!border-charcoal !bg-charcoal !text-white hover:!bg-charcoal' : ''
+                }
+              >
+                <UserCheck className="h-4 w-4" />
+                My Tasks{myCount > 0 ? ` (${myCount})` : ''}
+              </Button>
+            )}
+            {canManage && (
+              <ToolsMenu
+                busy={busy}
+                onRecalc={handleRecalc}
+                onEdit={() => setEditing(true)}
+              />
+            )}
+          </div>
         </div>
       </div>
 
@@ -426,17 +472,20 @@ export function SiteDetailView({
               </dl>
             </Card>
 
-            <Card className="p-4">
-              <h2 className="text-sm font-semibold text-charcoal">Staffing readiness</h2>
-              <p className="mt-1 text-xs text-charcoal/55">
-                People are owned by People Center. This panel will surface the
-                assigned person, required-by date, actual start date and a link
-                to the People Center record once the readiness integration lands.
-              </p>
-              <div className="mt-3">
-                <Badge tone="neutral">Integration pending</Badge>
-              </div>
-            </Card>
+            <TeamPanel
+              siteId={siteId}
+              tasks={tasks}
+              roles={roles}
+              people={people}
+              canManage={canManage}
+              onRoleSaved={(saved) =>
+                setRoles((rs) => {
+                  const rest = rs.filter((r) => r.id !== saved.id)
+                  return [...rest, saved].sort((a, b) => a.role_key.localeCompare(b.role_key))
+                })
+              }
+              onError={setError}
+            />
 
             {site.notes && (
               <Card className="p-4">
@@ -510,7 +559,15 @@ export function SiteDetailView({
                 }
               />
             ) : filtering && visibleCount === 0 ? (
-              <EmptyState title="No open tasks in this timeframe." />
+              <EmptyState
+                title={
+                  myOnly && userIsUnresolvable(me)
+                    ? "We couldn't match your login to a person, so we can't find your tasks yet."
+                    : myOnly
+                      ? 'No tasks assigned to you in this view.'
+                      : 'No open tasks in this timeframe.'
+                }
+              />
             ) : (
               <div className="space-y-6">
                 {groups.map((group) => (
@@ -520,6 +577,8 @@ export function SiteDetailView({
                     playbookId={group.playbookId}
                     tasks={group.tasks}
                     sections={group.sections}
+                    people={people}
+                    roles={roles}
                     canManage={canManage}
                     filtering={filtering}
                     matchesFilter={matchesFilter}
@@ -590,6 +649,8 @@ function PlaybookBlock({
   playbookId,
   tasks,
   sections,
+  people,
+  roles,
   canManage,
   filtering,
   matchesFilter,
@@ -603,6 +664,8 @@ function PlaybookBlock({
   playbookId: string | null
   tasks: OpeningTask[]
   sections: [string, OpeningTask[]][]
+  people: RosterPerson[]
+  roles: SiteRole[]
   canManage: boolean
   filtering: boolean
   matchesFilter: (t: OpeningTask) => boolean
@@ -663,6 +726,7 @@ function PlaybookBlock({
                 <span>Task</span>
                 <span>Due date</span>
                 <span>Owner</span>
+                <span>Support</span>
                 <span className="w-24" />
               </div>
 
@@ -671,6 +735,8 @@ function PlaybookBlock({
                   <TaskRow
                     key={task.id}
                     task={task}
+                    people={people}
+                    roles={roles}
                     canManage={canManage}
                     canMoveUp={!filtering && idx > 0}
                     canMoveDown={!filtering && idx < sectionTasks.length - 1}

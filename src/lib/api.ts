@@ -11,7 +11,9 @@ import type {
   OpeningSiteInput,
   OpeningTask,
   Playbook,
+  RosterPerson,
   SitePlaybook,
+  SiteRole,
   TaskTemplate,
 } from '../types'
 
@@ -113,7 +115,13 @@ export async function createTemplate(
     Partial<
       Pick<
         TaskTemplate,
-        'description' | 'category' | 'default_owner_role' | 'required' | 'sequence' | 'sort_order'
+        | 'description'
+        | 'category'
+        | 'default_owner_role'
+        | 'default_support_role'
+        | 'required'
+        | 'sequence'
+        | 'sort_order'
       >
     >,
 ): Promise<TaskTemplate> {
@@ -337,6 +345,7 @@ export async function addPlaybookToSite(
       due_date: computeDueDate(site, t.anchor_type, t.offset_days),
       date_overridden: false,
       assigned_role: t.default_owner_role,
+      support_role: t.default_support_role,
       priority: t.required ? 'high' : 'normal',
       sequence: t.sequence,
       sort_order: t.sort_order ?? t.sequence,
@@ -392,6 +401,93 @@ export async function recalculateDueDates(site: OpeningSite): Promise<RecalcResu
     }
   }
   return { updated, preserved, unscheduled }
+}
+
+// --- People & role assignments -------------------------------------------
+
+interface PeopleViewRow {
+  id: string
+  full_name: string | null
+  preferred_name: string | null
+  person_kind: string | null
+  is_head_office: boolean | null
+  photo_url: string | null
+}
+
+/** Picker display name: keep the preferred first name but include the surname
+ *  so people stay distinguishable ("Mike" + "Michael Hodgson" → "Mike
+ *  Hodgson"). Falls back to whichever name is present. */
+function personDisplayName(preferred: string, full: string): string {
+  const p = preferred.trim()
+  const f = full.trim()
+  if (!p) return f
+  if (!f) return p
+  const lastName = f.split(/\s+/).slice(-1)[0]
+  return p.toLowerCase().includes(lastName.toLowerCase()) ? p : `${p} ${lastName}`
+}
+
+/** People available in the owner/support/role pickers, from the
+ *  restaurant_center_people view (readable by every authenticated user;
+ *  exposes only picker fields). Sorted by display name. */
+export async function listPeople(): Promise<RosterPerson[]> {
+  const { data, error } = await supabase
+    .from('restaurant_center_people')
+    .select('id, full_name, preferred_name, person_kind, is_head_office, photo_url')
+  if (error) throw error
+  return ((data ?? []) as PeopleViewRow[])
+    .map((p) => ({
+      id: p.id,
+      name: personDisplayName(p.preferred_name ?? '', p.full_name ?? ''),
+      role: p.is_head_office
+        ? 'Head Office'
+        : p.person_kind === 'emerging_leader'
+          ? 'Emerging Leader'
+          : 'Manager',
+      photo_url: p.photo_url,
+    }))
+    .filter((p) => p.name.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export async function listSiteRoles(siteId: string): Promise<SiteRole[]> {
+  const { data, error } = await supabase
+    .from('opening_site_roles')
+    .select('*')
+    .eq('opening_site_id', siteId)
+    .order('role_key')
+  if (error) throw error
+  return (data ?? []) as SiteRole[]
+}
+
+/** Role assignments across every site — for the cross-site My Tasks view. */
+export async function listAllSiteRoles(): Promise<SiteRole[]> {
+  const { data, error } = await supabase.from('opening_site_roles').select('*')
+  if (error) throw error
+  return (data ?? []) as SiteRole[]
+}
+
+/** Assign (or clear) the person holding a role on a site. Upserts on the
+ *  (site, role) unique key so the Team panel is a single-action write. */
+export async function assignSiteRole(
+  siteId: string,
+  roleKey: string,
+  person: { id: string | null; name: string | null },
+): Promise<SiteRole> {
+  const { data, error } = await supabase
+    .from('opening_site_roles')
+    .upsert(
+      {
+        opening_site_id: siteId,
+        role_key: roleKey,
+        person_id: person.id,
+        person_name: person.name,
+      },
+      { onConflict: 'opening_site_id,role_key' },
+    )
+    .select('*')
+    .single()
+  if (error) throw error
+  return data as SiteRole
 }
 
 // --- Platform feedback ---------------------------------------------------

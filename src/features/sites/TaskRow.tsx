@@ -1,28 +1,38 @@
 // One opening task in the Menu Center row format: reorder arrows, checkbox,
 // inline-editable title with strikethrough on complete, ghost date input,
-// owner-role cell, and a right-hand cluster (at-risk flag, note, delete).
-// The checkbox is the primary interaction (complete ↔ not started); the
-// remaining statuses live in a compact chip menu so `blocked` and `N/A`
+// owner + support cells, and a right-hand cluster (at-risk flag, note,
+// delete). The checkbox is the primary interaction (complete ↔ not started);
+// the remaining statuses live in a compact chip menu so `blocked` and `N/A`
 // keep carrying information without cluttering the row.
+//
+// Owner/support display the RESOLVED person: an explicit per-task link, else
+// the site's role assignment (avatar appears, text keeps saying the role),
+// else the bare role text.
 
 import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, ChevronUp, CircleDashed, Flag, Lock, X } from 'lucide-react'
 import { Badge, TaskStatusBadge, ghostInputClass } from '../../components/ui'
 import { NotePopover } from '../../components/NotePopover'
+import { Avatar, PersonPicker } from '../../components/PersonPicker'
 import { formatDate, isOverdue } from '../../lib/dates'
+import { resolveAssignee, type AssigneeKind } from '../../lib/assignment'
 import {
   TASK_STATUSES,
   TASK_STATUS_LABELS,
   type OpeningTask,
+  type RosterPerson,
+  type SiteRole,
   type TaskStatus,
 } from '../../types'
 
 // Row and column-header grids must match; the header renders spacers for the
 // control and action clusters.
-export const TASK_GRID = 'sm:grid-cols-[3.5rem_minmax(0,1fr)_8.5rem_8rem_6rem]'
+export const TASK_GRID = 'sm:grid-cols-[3.5rem_minmax(0,1fr)_8.5rem_7.5rem_7.5rem_6rem]'
 
 export function TaskRow({
   task,
+  people,
+  roles,
   canManage,
   canMoveUp,
   canMoveDown,
@@ -31,6 +41,8 @@ export function TaskRow({
   onMove,
 }: {
   task: OpeningTask
+  people: RosterPerson[]
+  roles: SiteRole[]
   canManage: boolean
   canMoveUp: boolean
   canMoveDown: boolean
@@ -161,24 +173,22 @@ export function TaskRow({
         )}
       </div>
 
-      {/* Owner (role text in Phase 1; person resolution arrives with the
-          role-assignment phase) */}
-      {canManage ? (
-        <input
-          defaultValue={task.assigned_role ?? ''}
-          key={`owner-${task.id}-${task.assigned_role ?? ''}`}
-          onBlur={(e) => {
-            const v = e.target.value.trim()
-            if (v !== (task.assigned_role ?? '')) onChange({ assigned_role: v === '' ? null : v })
-          }}
-          placeholder="Owner"
-          className={ghostInputClass}
-        />
-      ) : (
-        <span className="truncate px-2 py-1.5 text-sm text-charcoal/70">
-          {task.assigned_role ?? '—'}
-        </span>
-      )}
+      <AssigneeCell
+        task={task}
+        kind="owner"
+        people={people}
+        roles={roles}
+        canManage={canManage}
+        onChange={onChange}
+      />
+      <AssigneeCell
+        task={task}
+        kind="support"
+        people={people}
+        roles={roles}
+        canManage={canManage}
+        onChange={onChange}
+      />
 
       {/* At-risk flag, note, delete */}
       <div className="flex w-24 items-center justify-end gap-0.5 justify-self-end">
@@ -211,6 +221,84 @@ export function TaskRow({
         )}
       </div>
     </div>
+  )
+}
+
+// Owner / Support cell: PersonPicker for managers (explicit link + free text),
+// static resolved display otherwise. When the person comes from the site role
+// assignment, their avatar appears while the text keeps saying the role.
+function AssigneeCell({
+  task,
+  kind,
+  people,
+  roles,
+  canManage,
+  onChange,
+}: {
+  task: OpeningTask
+  kind: AssigneeKind
+  people: RosterPerson[]
+  roles: SiteRole[]
+  canManage: boolean
+  onChange: (patch: Partial<OpeningTask>) => void
+}) {
+  const a = resolveAssignee(task, kind, roles)
+  const text = (kind === 'owner' ? task.assigned_role : task.support_role) ?? ''
+  const explicitId = kind === 'owner' ? task.assigned_person_id : task.support_person_id
+  const rolePerson = a.viaRole ? people.find((p) => p.id === a.personId) : undefined
+  const roleName = a.viaRole ? (rolePerson?.name ?? a.personName) : null
+
+  if (!canManage) {
+    const explicitPerson = explicitId ? people.find((p) => p.id === explicitId) : undefined
+    const display = explicitPerson?.name ?? roleName ?? text
+    if (!display) return <span className="px-2 py-1.5 text-sm text-charcoal/40">—</span>
+    return (
+      <span
+        className="flex min-w-0 items-center gap-1.5 px-2 py-1.5"
+        title={roleName ? `${roleName} · via ${text}` : undefined}
+      >
+        {(explicitPerson || roleName) && (
+          <Avatar
+            name={display}
+            photoUrl={explicitPerson?.photo_url ?? rolePerson?.photo_url}
+            size={18}
+          />
+        )}
+        <span className="truncate text-sm text-charcoal/70">{display}</span>
+      </span>
+    )
+  }
+
+  return (
+    <PersonPicker
+      value={text}
+      personId={explicitId}
+      people={people}
+      placeholder={kind === 'owner' ? 'Owner' : 'Support'}
+      className={ghostInputClass}
+      resolved={
+        roleName
+          ? {
+              name: roleName,
+              photoUrl: rolePerson?.photo_url ?? null,
+              hint: `${roleName} · via ${text}`,
+            }
+          : null
+      }
+      onChange={({ text: nextText, personId }) =>
+        onChange(
+          kind === 'owner'
+            ? {
+                assigned_role: nextText === '' ? null : nextText,
+                assigned_person_id: personId,
+              }
+            : {
+                support_role: nextText === '' ? null : nextText,
+                support_person_id: personId,
+              },
+        )
+      }
+    />
   )
 }
 

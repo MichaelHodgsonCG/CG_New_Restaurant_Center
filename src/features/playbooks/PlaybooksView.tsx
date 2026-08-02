@@ -362,6 +362,11 @@ function TemplateList({
                         </td>
                         <td className="px-3 py-2 text-charcoal/70">
                           {t.default_owner_role ?? '—'}
+                          {t.default_support_role && (
+                            <div className="text-xs text-charcoal/45">
+                              Support: {t.default_support_role}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           {t.required ? <Badge tone="warning">Required</Badge> : '—'}
@@ -416,6 +421,7 @@ interface TemplateFormValues {
   anchor_type: AnchorType
   offset_days: number
   default_owner_role: string | null
+  default_support_role: string | null
   required: boolean
   sequence?: number
   sort_order?: number
@@ -443,6 +449,7 @@ function TemplateForm({
   const [anchor, setAnchor] = useState<AnchorType>(template?.anchor_type ?? 'opening_date')
   const [offset, setOffset] = useState(String(template?.offset_days ?? -14))
   const [role, setRole] = useState(template?.default_owner_role ?? '')
+  const [supportRole, setSupportRole] = useState(template?.default_support_role ?? '')
   const [required, setRequired] = useState(template?.required ?? false)
   const [saving, setSaving] = useState(false)
 
@@ -458,6 +465,7 @@ function TemplateForm({
         anchor_type: anchor,
         offset_days: Number.parseInt(offset, 10) || 0,
         default_owner_role: role.trim() === '' ? null : role.trim(),
+        default_support_role: supportRole.trim() === '' ? null : supportRole.trim(),
         required,
       }
       if (!template) {
@@ -521,6 +529,13 @@ function TemplateForm({
             value={role}
             onChange={(e) => setRole(e.target.value)}
             placeholder="e.g. General Manager"
+          />
+        </Field>
+        <Field label="Default support role (optional)">
+          <TextInput
+            value={supportRole}
+            onChange={(e) => setSupportRole(e.target.value)}
+            placeholder="e.g. Regional"
           />
         </Field>
         <label className="flex items-center gap-2 self-end pb-1.5 text-sm text-charcoal/70">

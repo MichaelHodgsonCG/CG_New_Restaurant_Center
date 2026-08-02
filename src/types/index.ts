@@ -127,6 +127,7 @@ export interface TaskTemplate {
   anchor_type: AnchorType
   offset_days: number
   default_owner_role: string | null
+  default_support_role: string | null
   required: boolean
   sequence: number
   sort_order: number | null // fractional position within the category
@@ -148,6 +149,30 @@ export interface SitePlaybook {
   assigned_lead_person_id: string | null // → CGOPS person (soft ref); People Center owns the person
   status: AssignmentStatus
   created_at: string
+}
+
+// --- Role assignments & people -------------------------------------------
+
+// One row per (site, role): assigning a person to a role resolves every task
+// carrying that role text — the core Phase 2 model. person_name is a display
+// snapshot; person_id soft-refs People Center.
+export interface SiteRole {
+  id: string
+  opening_site_id: string
+  role_key: string
+  person_id: string | null
+  person_name: string | null
+  created_at: string
+  updated_at: string
+}
+
+// A person the pickers can offer — read from the restaurant_center_people
+// view (active leadership + Head Office; no HR fields).
+export interface RosterPerson {
+  id: string
+  name: string
+  role: string // 'Head Office' | 'Emerging Leader' | 'Manager'
+  photo_url: string | null
 }
 
 // --- Tasks ---------------------------------------------------------------
@@ -187,8 +212,10 @@ export interface OpeningTask {
   offset_days: number | null
   due_date: string | null
   date_overridden: boolean // true once a due date was set/changed by hand
-  assigned_person_id: string | null // → CGOPS person (soft ref)
-  assigned_role: string | null
+  assigned_person_id: string | null // → CGOPS person (soft ref) — per-task owner override
+  assigned_role: string | null // owner role / free-text label
+  support_person_id: string | null // per-task support override
+  support_role: string | null // support role / free-text label
   status: TaskStatus
   priority: TaskPriority
   at_risk: boolean
