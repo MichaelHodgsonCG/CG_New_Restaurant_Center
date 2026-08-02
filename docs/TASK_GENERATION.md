@@ -31,7 +31,14 @@ Examples:
 
 ## Generation
 
-When a playbook is added to an opening (Opening Detail → *Add a playbook*):
+**Every location gets every playbook.** When a manager opens an active
+opening (status planning / in progress / pre-opening / on hold), any active
+playbook not yet on the site is generated automatically — there is no manual
+"add a playbook" step. New playbooks in the library flow onto every active
+opening the next time it is viewed. Finished (`open`) and `cancelled` sites
+never auto-generate.
+
+For each playbook generated onto an opening:
 
 1. An `opening_site_playbooks` row is created (or reused) — unique per
    site + playbook.
