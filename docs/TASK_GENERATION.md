@@ -112,6 +112,10 @@ recalculation. A per-section addition still records the `playbook_id` and
 
 Sections are not entities — they are the distinct `category` values on the
 tasks (templates carry the canonical value; `null` renders as "General").
+Section order is the position order of their rows, so moving a whole section
+up/down (the chevrons on the section header, in the Playbook Editor and on
+the board alike) re-slots the section's rows' `sort_order` values between the
+neighbouring sections (`src/lib/sectionOrder.ts`).
 Renaming a section on a site's board bulk-updates the category on that site's
 tasks only; renaming in the playbook library updates the templates. The two
 deliberately don't sync automatically — a live opening's board is its own copy,

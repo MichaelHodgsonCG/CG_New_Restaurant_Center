@@ -44,6 +44,7 @@ import {
   savePlaybookFromSite,
   updatePlaybookFromSite,
 } from '../../lib/playbookSync'
+import { sectionMovePlan } from '../../lib/sectionOrder'
 import { taskMetrics } from '../../lib/metrics'
 import {
   bucketForTask,
@@ -328,6 +329,30 @@ export function SiteDetailView({
       setTasks((ts) => sortByPosition([...ts, task]))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not add the task.')
+    }
+  }
+
+  async function moveSection(groupKey: string, category: string, dir: -1 | 1) {
+    const group = groups.find((g) => g.key === groupKey)
+    if (!group) return
+    const index = group.sections.findIndex(([c]) => c === category)
+    const plan = sectionMovePlan(
+      group.sections.map(([, ts]) => ts.map((t) => ({ id: t.id, position: taskPosition(t) }))),
+      index,
+      dir,
+    )
+    if (!plan) return
+    const byId = new Map(plan.map((p) => [p.id, p.sort_order]))
+    setTasks((ts) =>
+      sortByPosition(
+        ts.map((t) => (byId.has(t.id) ? { ...t, sort_order: byId.get(t.id)! } : t)),
+      ),
+    )
+    try {
+      await Promise.all(plan.map((p) => updateTask(p.id, { sort_order: p.sort_order })))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not move the section.')
+      load()
     }
   }
 
@@ -683,6 +708,7 @@ export function SiteDetailView({
                   onMove={moveTask}
                   onAddTask={addTask}
                   onRenameSection={renameSection}
+                  onMoveSection={(category, dir) => moveSection(group.key, category, dir)}
                   onTool={runPlaybookTool}
                   onSaveAs={(playbookId) => setSaveAsFor({ playbookId })}
                 />
@@ -807,6 +833,7 @@ function PlaybookBlock({
   onMove,
   onAddTask,
   onRenameSection,
+  onMoveSection,
   onTool,
   onSaveAs,
 }: {
@@ -825,6 +852,7 @@ function PlaybookBlock({
   onMove: (task: OpeningTask, dir: -1 | 1) => void
   onAddTask: (playbookId: string | null, category: string | null) => void
   onRenameSection: (playbookId: string | null, from: string, to: string) => void
+  onMoveSection: (category: string, dir: -1 | 1) => void
   onTool: (action: 'apply' | 'push' | 'roles', playbookId: string) => void
   onSaveAs: (playbookId: string | null) => void
 }) {
@@ -868,7 +896,7 @@ function PlaybookBlock({
 
       {!collapsed && (
         <div className="space-y-5 pl-1">
-          {visibleSections.map(([category, sectionTasks]) => (
+          {visibleSections.map(([category, sectionTasks], sectionIdx) => (
             <div key={category}>
               <SectionHeader
                 name={category}
@@ -880,6 +908,11 @@ function PlaybookBlock({
                     ? (to) => onRenameSection(playbookId, category, to)
                     : undefined
                 }
+                onMove={
+                  canManage && !filtering ? (dir) => onMoveSection(category, dir) : undefined
+                }
+                canMoveUp={sectionIdx > 0}
+                canMoveDown={sectionIdx < visibleSections.length - 1}
               />
 
               <div
