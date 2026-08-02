@@ -78,7 +78,7 @@ export function TeamPanel({
           Roles appear once tasks are generated for this opening.
         </p>
       ) : (
-        <ul className="mt-3 space-y-1">
+        <ul className="mt-3 max-h-72 space-y-1 overflow-y-auto pr-1">
           {roleRows.map((r) => (
             <li key={r.key} className="grid grid-cols-[1fr_9.5rem] items-center gap-2">
               <span className="min-w-0">
