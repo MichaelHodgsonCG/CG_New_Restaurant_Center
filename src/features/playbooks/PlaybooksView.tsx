@@ -6,7 +6,7 @@
 // model: opening_playbooks + opening_task_templates.
 
 import { useCallback, useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   createPlaybook,
   createTemplate,
@@ -205,6 +205,14 @@ function TemplateList({
 }) {
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [movingSelection, setMovingSelection] = useState(false)
+
+  // Selection survives reloads poorly and never survives switching playbooks.
+  useEffect(() => {
+    setSelected(new Set())
+    setMovingSelection(false)
+  }, [playbook.id])
 
   // Sections in order of first appearance, templates already position-sorted.
   const sections: [string, TaskTemplate[]][] = []
@@ -255,6 +263,83 @@ function TemplateList({
     onChange()
   }
 
+  // --- Multi-select operations (the Menu Center Menu Editor pattern) -------
+
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSectionSelected(sectionTemplates: TaskTemplate[]) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      const allIn = sectionTemplates.every((t) => next.has(t.id))
+      for (const t of sectionTemplates) {
+        if (allIn) next.delete(t.id)
+        else next.add(t.id)
+      }
+      return next
+    })
+  }
+
+  /** Append the selection to `category` (null = General): fractional
+   *  positions slot the moved rows after the target section's last row and
+   *  before the next section. */
+  async function moveSelectionTo(category: string | null) {
+    const chosen = templates
+      .filter((t) => selected.has(t.id))
+      .sort((a, b) => templatePosition(a) - templatePosition(b))
+    if (chosen.length === 0) return
+
+    const targetKey = category ?? GENERAL
+    const allPositions = templates.map(templatePosition)
+    const maxAll = allPositions.length > 0 ? Math.max(...allPositions) : 0
+    const sectionIdx = sections.findIndex(([c]) => c === targetKey)
+    const targetRest =
+      sectionIdx >= 0 ? sections[sectionIdx][1].filter((t) => !selected.has(t.id)) : []
+
+    let lo: number
+    let hi: number
+    if (targetRest.length > 0) {
+      lo = Math.max(...targetRest.map(templatePosition))
+      const nextRest = sections[sectionIdx + 1]?.[1].filter((t) => !selected.has(t.id)) ?? []
+      hi = nextRest.length > 0 ? Math.min(...nextRest.map(templatePosition)) : lo + chosen.length + 1
+      if (hi <= lo) hi = lo + chosen.length + 1
+    } else {
+      // New or emptied section: it starts at the end of the playbook.
+      lo = maxAll + 1
+      hi = lo + chosen.length + 1
+    }
+    const step = (hi - lo) / (chosen.length + 1)
+
+    await Promise.all(
+      chosen.map((t, i) =>
+        updateTemplate(t.id, { category, sort_order: lo + step * (i + 1) }),
+      ),
+    )
+    setSelected(new Set())
+    setMovingSelection(false)
+    onChange()
+  }
+
+  async function removeSelection() {
+    const ids = [...selected]
+    if (ids.length === 0) return
+    if (
+      !window.confirm(
+        `Delete ${ids.length} template${ids.length === 1 ? '' : 's'} from "${playbook.name}"?\n\nOpenings keep their already-generated tasks.`,
+      )
+    )
+      return
+    await Promise.all(ids.map((id) => deleteTemplate(id)))
+    setSelected(new Set())
+    onChange()
+  }
+
   return (
     <div className="space-y-5">
       {/* Picker row — the dropdown IS the title */}
@@ -283,6 +368,33 @@ function TemplateList({
           </div>
         )}
       </div>
+
+      {/* Bulk selection bar */}
+      {canManage && selected.size > 0 && (
+        <div className="sticky top-2 z-30 flex items-center gap-3 rounded-xl bg-charcoal px-4 py-2.5 text-white shadow-lg">
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          <button
+            onClick={() => setMovingSelection(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/20"
+          >
+            <ArrowRightLeft className="h-3 w-3" />
+            Move to Section
+          </button>
+          <button
+            onClick={removeSelection}
+            className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-danger/70"
+          >
+            <Trash2 className="h-3 w-3" />
+            Remove
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="ml-auto text-xs text-white/70 transition-colors hover:text-white"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
 
       {canManage && adding && (
         <TemplateForm
@@ -325,7 +437,16 @@ function TemplateList({
               <table className="w-full min-w-[560px] text-sm">
                 <thead>
                   <tr className="border-b border-surface-line text-left text-xs uppercase tracking-wide text-charcoal/50">
-                    {canManage && <th className="w-10 px-2 py-2" />}
+                    {canManage && (
+                      <th className="w-14 px-2 py-2">
+                        <input
+                          type="checkbox"
+                          title="Select all in this section"
+                          checked={sectionTemplates.every((t) => selected.has(t.id))}
+                          onChange={() => toggleSectionSelected(sectionTemplates)}
+                        />
+                      </th>
+                    )}
                     <th className="px-3 py-2 font-medium">Task</th>
                     <th className="px-3 py-2 font-medium">Anchor</th>
                     <th className="px-3 py-2 font-medium">Offset</th>
@@ -356,21 +477,28 @@ function TemplateList({
                       <tr key={t.id} className="border-b border-surface-line last:border-0">
                         {canManage && (
                           <td className="px-2 py-2">
-                            <div className="flex flex-col">
-                              <button
-                                onClick={() => move(sectionTemplates, idx, -1)}
-                                disabled={idx === 0}
-                                className="p-0.5 text-charcoal/25 hover:text-charcoal/70 disabled:opacity-30"
-                              >
-                                <ChevronUp className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={() => move(sectionTemplates, idx, 1)}
-                                disabled={idx === sectionTemplates.length - 1}
-                                className="p-0.5 text-charcoal/25 hover:text-charcoal/70 disabled:opacity-30"
-                              >
-                                <ChevronDown className="h-3.5 w-3.5" />
-                              </button>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="checkbox"
+                                checked={selected.has(t.id)}
+                                onChange={() => toggleSelected(t.id)}
+                              />
+                              <div className="flex flex-col">
+                                <button
+                                  onClick={() => move(sectionTemplates, idx, -1)}
+                                  disabled={idx === 0}
+                                  className="p-0.5 text-charcoal/25 hover:text-charcoal/70 disabled:opacity-30"
+                                >
+                                  <ChevronUp className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => move(sectionTemplates, idx, 1)}
+                                  disabled={idx === sectionTemplates.length - 1}
+                                  className="p-0.5 text-charcoal/25 hover:text-charcoal/70 disabled:opacity-30"
+                                >
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             </div>
                           </td>
                         )}
@@ -441,7 +569,76 @@ function TemplateList({
         positive = days <strong>after</strong>. e.g. “GM in place” = −14 on
         opening date.
       </p>
+
+      {movingSelection && (
+        <MoveToSectionModal
+          count={selected.size}
+          categories={sections.map(([c]) => c)}
+          onMove={(cat) => moveSelectionTo(cat === GENERAL ? null : cat)}
+          onCancel={() => setMovingSelection(false)}
+        />
+      )}
     </div>
+  )
+}
+
+function MoveToSectionModal({
+  count,
+  categories,
+  onMove,
+  onCancel,
+}: {
+  count: number
+  categories: string[]
+  onMove: (category: string) => void
+  onCancel: () => void
+}) {
+  const [newSection, setNewSection] = useState('')
+  return (
+    <Modal onClose={onCancel}>
+      <h2 className="font-semibold">
+        Move {count} template{count === 1 ? '' : 's'} to section
+      </h2>
+      <p className="mt-0.5 text-xs text-charcoal/55">
+        Selected templates are appended to the chosen section.
+      </p>
+      <div className="mt-3 max-h-64 space-y-0.5 overflow-y-auto">
+        {categories.map((c) => (
+          <button
+            key={c}
+            onClick={() => onMove(c)}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-charcoal/75 transition-colors hover:bg-surface-muted"
+          >
+            <ArrowRightLeft className="h-3.5 w-3.5 text-charcoal/35" />
+            {c}
+          </button>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center gap-2 border-t border-surface-line pt-3">
+        <TextInput
+          value={newSection}
+          onChange={(e) => setNewSection(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && newSection.trim() !== '') onMove(newSection.trim())
+          }}
+          placeholder="Or a new section…"
+          className="!py-1.5 !text-xs"
+        />
+        <Button
+          variant="secondary"
+          className="!px-2.5 !py-1.5 !text-xs"
+          disabled={newSection.trim() === ''}
+          onClick={() => onMove(newSection.trim())}
+        >
+          <Plus className="h-3.5 w-3.5" /> Move
+        </Button>
+      </div>
+      <div className="mt-3 flex justify-end">
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </Modal>
   )
 }
 
