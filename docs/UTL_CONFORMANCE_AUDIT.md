@@ -43,24 +43,27 @@ blocks `completed_by` stamping and the resolver alike.
 
 ## Remediation list (next touch of the task surface)
 
-Status updated 2026-08-13 after the assignee auto-fill feature
-(`20260813130000_assignee_autofill_from_people_center.sql`).
+Status updated 2026-08-13, after merging the Menu Center task format from
+main (Team panel / `opening_site_roles`, dynamic owner+support resolution,
+in-app My Tasks) and adding the People Center Team auto-fill
+(`20260813170000_autofill_site_roles.sql`). Note: this audit predates that
+merge — the audited code has since been superseded by the task-format model,
+which itself resolves several findings.
 
 1. ~~Wire the People Center person link in
-   `restaurant_center_current_profile()`~~ — **done** (joins
-   `people_center_user_profiles`; returns `person_id` + `display_name`).
-2. ~~Person assignment: write `assigned_person_id` + name snapshot; person
-   picker; keep `assigned_role` as the pre-assignment state~~ — **done**
-   (auto-fill from People Center location settings via
-   `restaurant_center_resolve_site_assignees`, manual pick with
-   `assignee_overridden`, `assigned_person_name` snapshot).
+   `restaurant_center_current_profile()`~~ — **done** (task-format phase 2 on
+   main; returns `person_id` + `display_name`).
+2. ~~Person assignment~~ — **done** by the task-format model (Team panel
+   role→person per site, per-task overrides, People Center roster pickers)
+   plus the Team **auto-fill** from People Center location settings
+   (`restaurant_center_autofill_site_roles`; hand-picks always win).
 3. Stamp `completed_by` on closure — **done** (server-side trigger; reopening
    clears it). Adding `dropped` to the status set — still open.
 4. ~~Index `assigned_person_id`~~ — **done**.
-5. `resolve_my_restaurant_tasks()` RPC mapping statuses to the canonical
-   vocabulary (`not_started→open`, `complete→done`), outstanding only,
-   owner + support, empty-not-error — **open** (now unblocked: tasks carry
-   person ids).
+5. `resolve_my_restaurant_tasks()` RPC for the CGOPS My Day rollup — **open**
+   (an in-app My Tasks view now exists on main; the cross-app resolver must
+   mirror its dynamic resolution: per-task override → site role → nothing,
+   statuses mapped to the canonical vocabulary, owner + support).
 6. A minimal one-shot `?view=` launch intent (SSO-safe, query-string) despite
    the no-router convention — **open**.
 7. Stop overloading priority: carry `required` on the task row (or join to the

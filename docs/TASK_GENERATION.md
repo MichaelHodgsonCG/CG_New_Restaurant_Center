@@ -100,26 +100,31 @@ There is no automatic re-recalculation on save — it is an explicit button so a
 leader stays in control of a schedule shift, and the app tells them how many
 manual dates it preserved.
 
-## Assignee auto-fill (People Center alignment)
+## Team auto-fill (People Center alignment)
 
-Tasks keep their **role label** ("General Manager", "Beverage Manager"…), and
-the actual **person** is auto-filled from People Center's location settings —
-who holds that position at the site's location
-(`people_center_position_assignments`). Decision (Michael, 2026-08-13).
+Tasks keep their **role label** ("General Manager", "Beverage Manager"…) and
+people resolve **dynamically** through the Team panel (`opening_site_roles`,
+the Menu Center task format). The **Auto-fill** action on the Team panel
+fills each role in play with the person holding the matching position at the
+site's location in People Center (`people_center_position_assignments`).
+Decision (Michael, 2026-08-13).
 
-- Runs automatically after playbook generation, and on demand via **Refresh
-  assignees** on Opening Detail.
 - Role → position: the `opening_role_mappings` alias table first (e.g.
   "the Chef" → *Chef de Cuisine*), then an exact position-name match.
-- **A hand-picked person always wins** (`assignee_overridden`, same pattern
-  as `date_overridden`): pick a person on the task row to override; clear the
-  field to return the task to auto-fill.
+- **A hand-picked assignment always wins**: rows assigned through the Team
+  panel picker carry `autofilled = false` and the auto-fill never touches
+  them. Auto-filled rows stay refreshable — a GM change in People Center
+  flows through on the next run, and a person who left the position is
+  cleared rather than left stale.
 - **Never guesses**: a role with zero holders, several holders and no single
-  primary, or no matching position is left unfilled and reported for a manual
-  pick. Department/HQ roles (IT, Training, Marketing, Finance) are deliberately
-  unmapped — manual assignment only, per the same decision.
+  primary, or no matching position is reported for a manual pick. Department
+  and HQ roles (IT, Training, directors…) resolve only when the position is
+  actually assigned at the location — otherwise they stay manual, per the
+  same decision.
 - A new site fills in as staffing happens: once the GM hire is recorded in
-  People Center, the next refresh assigns their tasks.
+  People Center, the next auto-fill assigns every task the GM role owns.
+- Site → location matching uses People Center's `cgops_location_id` link,
+  with an exact-name fallback until new locations are linked.
 - Completing a task stamps `completed_at` and `completed_by` (the closer's
   People Center person) server-side; reopening clears both.
 

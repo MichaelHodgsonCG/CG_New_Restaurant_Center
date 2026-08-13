@@ -3,8 +3,13 @@
 // assignments) with a picker per role. Assigning a person here resolves every
 // task carrying that role, immediately: resolution is dynamic, nothing is
 // backfilled. Per-task overrides on the board still win.
+//
+// "Auto-fill" pulls each role's person from People Center's location
+// settings (who holds the matching position at this site's location).
+// Hand-picked assignments are never overwritten by it.
 
 import { useMemo } from 'react'
+import { Sparkles } from 'lucide-react'
 import { Card } from '../../components/ui'
 import { PersonPicker } from '../../components/PersonPicker'
 import { assignSiteRole } from '../../lib/api'
@@ -16,6 +21,8 @@ export function TeamPanel({
   roles,
   people,
   canManage,
+  busy,
+  onAutofill,
   onRoleSaved,
   onError,
 }: {
@@ -24,6 +31,8 @@ export function TeamPanel({
   roles: SiteRole[]
   people: RosterPerson[]
   canManage: boolean
+  busy: boolean
+  onAutofill: () => void
   onRoleSaved: (role: SiteRole) => void
   onError: (message: string) => void
 }) {
@@ -68,7 +77,19 @@ export function TeamPanel({
 
   return (
     <Card className="p-4">
-      <h2 className="text-sm font-semibold text-charcoal">Team</h2>
+      <div className="flex items-start justify-between gap-2">
+        <h2 className="text-sm font-semibold text-charcoal">Team</h2>
+        {canManage && (
+          <button
+            onClick={onAutofill}
+            disabled={busy}
+            title="Fill each role with the person holding that position at this location in People Center. Roles you assigned by hand are never changed."
+            className="inline-flex items-center gap-1 text-xs font-medium text-cg-orange hover:underline disabled:opacity-50"
+          >
+            <Sparkles className="h-3.5 w-3.5" /> Auto-fill
+          </button>
+        )}
+      </div>
       <p className="mt-0.5 text-xs text-charcoal/55">
         Assign a person to each role — every task owned by that role resolves
         to them, including in My Tasks. People are owned by People Center.

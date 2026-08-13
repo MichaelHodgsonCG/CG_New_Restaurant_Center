@@ -471,7 +471,9 @@ export async function listAllSiteRoles(): Promise<SiteRole[]> {
 }
 
 /** Assign (or clear) the person holding a role on a site. Upserts on the
- *  (site, role) unique key so the Team panel is a single-action write. */
+ *  (site, role) unique key so the Team panel is a single-action write.
+ *  A hand-pick clears the autofilled flag, which locks the row against the
+ *  People Center auto-fill. */
 export async function assignSiteRole(
   siteId: string,
   roleKey: string,
@@ -485,6 +487,7 @@ export async function assignSiteRole(
         role_key: roleKey,
         person_id: person.id,
         person_name: person.name,
+        autofilled: false,
       },
       { onConflict: 'opening_site_id,role_key' },
     )
@@ -492,6 +495,28 @@ export async function assignSiteRole(
     .single()
   if (error) throw error
   return data as SiteRole
+}
+
+export interface RoleAutofillResult {
+  role_label: string
+  outcome: 'filled' | 'manual' | 'no_location' | 'no_role_match' | 'no_person' | 'ambiguous'
+  person_name: string | null
+}
+
+/**
+ * Auto-fill the Team panel from People Center's location settings: each role
+ * in play resolves to the person holding the matching position at the site's
+ * location (people_center_position_assignments). Hand-assigned roles are
+ * never touched; zero or ambiguous holders are reported for a manual pick,
+ * never guessed. Department/HQ roles resolve only when the position is
+ * actually assigned at the location.
+ */
+export async function autofillSiteRoles(siteId: string): Promise<RoleAutofillResult[]> {
+  const { data, error } = await supabase.rpc('restaurant_center_autofill_site_roles', {
+    p_site_id: siteId,
+  })
+  if (error) throw error
+  return (data ?? []) as RoleAutofillResult[]
 }
 
 // --- Platform feedback ---------------------------------------------------

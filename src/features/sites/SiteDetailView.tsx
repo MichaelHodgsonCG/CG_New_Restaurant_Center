@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import {
   addPlaybookToSite,
+  autofillSiteRoles,
   createOneOffTask,
   deleteTask,
   getSite,
@@ -32,6 +33,7 @@ import {
   renameTaskCategory,
   updateSite,
   updateTask,
+  type RoleAutofillResult,
 } from '../../lib/api'
 import {
   buildCurrentUser,
@@ -473,6 +475,21 @@ export function SiteDetailView({
     }
   }
 
+  async function handleAutofillTeam() {
+    if (!site) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await autofillSiteRoles(site.id)
+      setNotice(autofillNotice(res))
+      setRoles(await listSiteRoles(site.id))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not auto-fill the team.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (loading) return <p className="p-6 text-sm text-charcoal/50">Loading…</p>
   if (!site)
     return (
@@ -602,6 +619,8 @@ export function SiteDetailView({
             roles={roles}
             people={people}
             canManage={canManage}
+            busy={busy}
+            onAutofill={handleAutofillTeam}
             onRoleSaved={(saved) =>
               setRoles((rs) => {
                 const rest = rs.filter((r) => r.id !== saved.id)
@@ -741,6 +760,29 @@ export function SiteDetailView({
       )}
     </div>
   )
+}
+
+// Human-readable summary of a Team auto-fill: who was matched from People
+// Center, which roles were left for a manual pick, and which hand-picked
+// assignments were preserved.
+function autofillNotice(res: RoleAutofillResult[]): string {
+  if (res.length === 0) return 'No roles in play yet — roles appear once tasks are generated.'
+  if (res.every((r) => r.outcome === 'no_location'))
+    return 'Auto-fill needs a People Center location: once this site’s location exists there (same name, or linked to the CGOPS location), run it again.'
+  const filled = res.filter((r) => r.outcome === 'filled')
+  const manual = res.filter((r) => r.outcome === 'manual')
+  const open = res.filter((r) => r.outcome !== 'filled' && r.outcome !== 'manual')
+  const parts: string[] = []
+  parts.push(
+    filled.length > 0
+      ? `Auto-filled ${filled.map((r) => `${r.role_label} → ${r.person_name}`).join(', ')}`
+      : 'No roles could be auto-filled',
+  )
+  if (manual.length > 0)
+    parts.push(`kept your picks for ${manual.map((r) => r.role_label).join(', ')}`)
+  if (open.length > 0)
+    parts.push(`manual pick needed for ${open.map((r) => r.role_label).join(', ')}`)
+  return `${parts.join('; ')}.`
 }
 
 function SaveAsPlaybookModal({

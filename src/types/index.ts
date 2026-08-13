@@ -164,6 +164,7 @@ export interface SiteRole {
   role_key: string
   person_id: string | null
   person_name: string | null
+  autofilled: boolean // written by the People Center auto-fill; false = assigned by hand (auto-fill never touches it)
   created_at: string
   updated_at: string
 }
