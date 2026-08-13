@@ -1,5 +1,12 @@
 # PROJECT-LOG — CG New Restaurant Center
 
+[2026-08-13] Design check: auto-fill task assignees from People Center location roles
+Shipped:   Assessment only, no code. Verified Michael's proposed design is feasible: people_center_position_assignments holds per-location role→person (GM 17 active across 16 locations, Beverage Manager 17/16, Chef de Cuisine 18/15), people_center_position_mappings exists as the role-string→position seam, and people_center_locations.cgops_location_id links to the CGOPS locations that opening_sites reference. Design (tasks stay role-labelled; person auto-filled from location + position with a manual overwrite that always wins, mirroring the existing date_overridden pattern) conforms to UTL v1 — role routing as pre-assignment, person id + name snapshot on resolution.
+Roadmap:   UTL remediation — person assignment via location-role auto-fill -> planned
+Decisions: (1) Manager-only task writes stand — Michael: only managers use our apps; closes audit item 8 (assignee self-closure not needed). (2) Direction accepted: assignees auto-fill from People Center location settings with an overwrite option, pending Michael's go-ahead on the open mapping questions.
+Blockers:  Open design questions for Michael: who receives department playbooks (IT/Marketing/Finance/Training) that have no per-location position; behavior when a location has zero or multiple people in a position.
+Next:      On go-ahead, implement: role→position mappings, assignee auto-fill + overwrite flag + name snapshot, refresh on People Center changes.
+
 [2026-08-13] UTL v1 conformance audit of existing task features
 Shipped:   Audited Opening Tasks/Playbooks against UTL v1 §6 (standard read from the bus; code + live data checked — 1,149 opening_tasks rows). Findings filed in docs/UTL_CONFORMANCE_AUDIT.md. Confirmed the §8 survey items independently: assigned_person_id never written (0 rows), completed_by never stamped, "Required" badge keys off priority. Also found: no resolver RPC, no owner index, no deep-link intent, non-manager assignees cannot close their own tasks, profile person_id is null (root blocker). Positives: stable ids, idempotent generation, edits never reset status, completed_at hygiene clean, source chip registered. No code changed — audit only.
 Roadmap:   Process — UTL conformance audit -> complete; UTL remediation -> planned (next touch of the task surface)
