@@ -3,7 +3,20 @@
 Guidance for Claude Code sessions working in this repository.
 
 This app is part of the **CGOPS platform** (Charcoal Group). See `README.md`
-for scope and tech stack. Every session must follow the protocol below.
+for scope and tech stack. Every session must follow the protocols below.
+
+## TASK FEATURE PROTOCOL (CG Universal Task List Standard)
+
+Before designing or building ANY task/checklist/action/assignment feature,
+read the "CG Universal Task List Standard" from the CG bus
+(cc_project_artifacts where metadata->>'kind'='standard', newest active
+version) and conform to its §6 checklist — deviations require Michael's
+explicit sign-off, filed as a decision.
+
+(As of 2026-08-13 the newest active version is "CG Universal Task List
+Standard (UTL v1)"; §6 is its "Conformance checklist — BEFORE building any
+task feature". Always re-query the bus for the newest active version rather
+than relying on this note.)
 
 ## SESSION LOG + FILING PROTOCOL (v2, CG)
 
