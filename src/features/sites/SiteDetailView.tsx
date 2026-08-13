@@ -9,18 +9,22 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  UserCheck,
   Wand2,
 } from 'lucide-react'
 import {
   addPlaybookToSite,
   createOneOffTask,
   getSite,
+  listPeople,
   listPlaybooks,
   listSitePlaybooks,
   listTasks,
   recalculateDueDates,
+  resolveSiteAssignees,
   updateSite,
   updateTask,
+  type AssigneeResolution,
 } from '../../lib/api'
 import { taskMetrics } from '../../lib/metrics'
 import { formatDate, relativeDays } from '../../lib/dates'
@@ -43,6 +47,7 @@ import {
   type OpeningSite,
   type OpeningSiteInput,
   type OpeningTask,
+  type Person,
   type Playbook,
   type SitePlaybook,
 } from '../../types'
@@ -60,6 +65,7 @@ export function SiteDetailView({
   const [tasks, setTasks] = useState<OpeningTask[]>([])
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [assignments, setAssignments] = useState<SitePlaybook[]>([])
+  const [people, setPeople] = useState<Person[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -69,22 +75,25 @@ export function SiteDetailView({
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [s, t, pbs, asg] = await Promise.all([
+      const [s, t, pbs, asg, ppl] = await Promise.all([
         getSite(siteId),
         listTasks(siteId),
         listPlaybooks(),
         listSitePlaybooks(siteId),
+        // Roster for the person picker; the RPC returns nothing to non-managers.
+        canManage ? listPeople() : Promise.resolve([]),
       ])
       setSite(s)
       setTasks(t)
       setPlaybooks(pbs)
       setAssignments(asg)
+      setPeople(ppl)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the site.')
     } finally {
       setLoading(false)
     }
-  }, [siteId])
+  }, [siteId, canManage])
 
   useEffect(() => {
     load()
@@ -138,9 +147,21 @@ export function SiteDetailView({
     setError(null)
     try {
       const res = await addPlaybookToSite(site, playbookId)
+      // Auto-fill assignees for the fresh tasks; non-fatal if it fails.
+      let assigneeNote = ''
+      try {
+        const filled = (await resolveSiteAssignees(site.id)).filter(
+          (r) => r.outcome === 'filled',
+        ).length
+        if (filled > 0)
+          assigneeNote = `, assignees auto-filled for ${filled} role${filled === 1 ? '' : 's'}`
+      } catch {
+        /* generation succeeded — assignee refresh can be run manually */
+      }
       setNotice(
         `${playbookName(playbookId)}: ${res.created} task${res.created === 1 ? '' : 's'} generated` +
           (res.skipped ? `, ${res.skipped} already existed` : '') +
+          assigneeNote +
           '.',
       )
       await load()
@@ -165,6 +186,21 @@ export function SiteDetailView({
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not recalculate dates.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleRefreshAssignees() {
+    if (!site) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await resolveSiteAssignees(site.id)
+      setNotice(assigneeNotice(res))
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not refresh assignees.')
     } finally {
       setBusy(false)
     }
@@ -202,6 +238,16 @@ export function SiteDetailView({
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {canManage && (
+              <Button
+                variant="secondary"
+                onClick={handleRefreshAssignees}
+                disabled={busy}
+                title="Auto-fill each owner role with the person holding that position at this location (People Center). Hand-picked assignees are never changed."
+              >
+                <UserCheck className="h-4 w-4" /> Refresh assignees
+              </Button>
+            )}
             {canManage && (
               <Button variant="secondary" onClick={handleRecalc} disabled={busy}>
                 <RefreshCw className="h-4 w-4" /> Recalculate dates
@@ -379,6 +425,7 @@ export function SiteDetailView({
                         key={t.id}
                         task={t}
                         canManage={canManage}
+                        people={people}
                         onChange={(patch) => patchTask(t.id, patch)}
                       />
                     ))}
@@ -399,6 +446,25 @@ export function SiteDetailView({
       )}
     </div>
   )
+}
+
+// Human-readable summary of an assignee refresh: who was matched, which
+// roles still need a manual pick, and why.
+function assigneeNotice(res: AssigneeResolution[]): string {
+  if (res.length === 0) return 'No roles to assign on this site.'
+  if (res.every((r) => r.outcome === 'no_location'))
+    return 'Assignees could not be matched: this site has no People Center location yet. Once the location exists in People Center (same name, or linked to the CGOPS location), refresh again.'
+  const filled = res.filter((r) => r.outcome === 'filled')
+  const manual = res.filter((r) => r.outcome !== 'filled')
+  const filledText =
+    filled.length > 0
+      ? filled.map((r) => `${r.role_label} → ${r.person_name}`).join(', ')
+      : 'no roles could be auto-filled'
+  const manualText =
+    manual.length > 0
+      ? `; manual pick needed for: ${manual.map((r) => r.role_label).join(', ')}`
+      : ''
+  return `Assignees refreshed: ${filledText}${manualText}.`
 }
 
 function DateValue({ iso }: { iso: string | null }) {

@@ -43,18 +43,27 @@ blocks `completed_by` stamping and the resolver alike.
 
 ## Remediation list (next touch of the task surface)
 
-1. Wire the People Center person link in `restaurant_center_current_profile()`
-   (auth → `people_center_user_profiles` → `person_id`).
-2. Person assignment: write `assigned_person_id` + add a name-snapshot column;
-   person picker in TaskRow; keep `assigned_role` as the pre-assignment state.
-3. Stamp `completed_by` on closure; add `dropped` to the status set.
-4. Index `assigned_person_id`.
+Status updated 2026-08-13 after the assignee auto-fill feature
+(`20260813130000_assignee_autofill_from_people_center.sql`).
+
+1. ~~Wire the People Center person link in
+   `restaurant_center_current_profile()`~~ — **done** (joins
+   `people_center_user_profiles`; returns `person_id` + `display_name`).
+2. ~~Person assignment: write `assigned_person_id` + name snapshot; person
+   picker; keep `assigned_role` as the pre-assignment state~~ — **done**
+   (auto-fill from People Center location settings via
+   `restaurant_center_resolve_site_assignees`, manual pick with
+   `assignee_overridden`, `assigned_person_name` snapshot).
+3. Stamp `completed_by` on closure — **done** (server-side trigger; reopening
+   clears it). Adding `dropped` to the status set — still open.
+4. ~~Index `assigned_person_id`~~ — **done**.
 5. `resolve_my_restaurant_tasks()` RPC mapping statuses to the canonical
    vocabulary (`not_started→open`, `complete→done`), outstanding only,
-   owner + support, empty-not-error.
+   owner + support, empty-not-error — **open** (now unblocked: tasks carry
+   person ids).
 6. A minimal one-shot `?view=` launch intent (SSO-safe, query-string) despite
-   the no-router convention.
+   the no-router convention — **open**.
 7. Stop overloading priority: carry `required` on the task row (or join to the
-   template) and let priority be its own axis.
-8. Allow an assignee to update status on their own task (policy or RPC),
-   keeping broader edits manager-only.
+   template) and let priority be its own axis — **open**.
+8. ~~Allow an assignee to update status on their own task~~ — **closed as not
+   needed** (decision, Michael 2026-08-13: only managers use the apps).

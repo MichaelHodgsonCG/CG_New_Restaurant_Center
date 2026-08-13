@@ -185,6 +185,8 @@ export interface OpeningTask {
   due_date: string | null
   date_overridden: boolean // true once a due date was set/changed by hand
   assigned_person_id: string | null // → CGOPS person (soft ref)
+  assigned_person_name: string | null // display snapshot of the assignee
+  assignee_overridden: boolean // true once a person was hand-picked; auto-fill leaves it alone
   assigned_role: string | null
   status: TaskStatus
   priority: TaskPriority
@@ -195,4 +197,14 @@ export interface OpeningTask {
   notes: string | null
   created_at: string
   updated_at: string
+}
+
+// --- People (read-only roster from People Center) ------------------------
+
+// A person as surfaced by restaurant_center_list_people() — People Center
+// stays the system of record; this is only id + display name for the
+// manual-assignment picker.
+export interface Person {
+  id: string
+  full_name: string
 }

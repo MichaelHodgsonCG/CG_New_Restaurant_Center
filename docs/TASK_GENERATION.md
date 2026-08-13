@@ -1,8 +1,10 @@
 # Task generation & recalculation
 
-How opening tasks come into existence, and what happens to their dates when a
-site's anchor dates change. Implemented in `src/lib/api.ts`
-(`addPlaybookToSite`, `recalculateDueDates`) and `src/lib/dates.ts`.
+How opening tasks come into existence, what happens to their dates when a
+site's anchor dates change, and how assignees are aligned with People Center.
+Implemented in `src/lib/api.ts` (`addPlaybookToSite`, `recalculateDueDates`,
+`resolveSiteAssignees`), `src/lib/dates.ts`, and the
+`restaurant_center_resolve_site_assignees` RPC.
 
 ## The offset convention
 
@@ -82,6 +84,29 @@ Recalculation (`recalculateDueDates`) therefore:
 There is no automatic re-recalculation on save — it is an explicit button so a
 leader stays in control of a schedule shift, and the app tells them how many
 manual dates it preserved.
+
+## Assignee auto-fill (People Center alignment)
+
+Tasks keep their **role label** ("General Manager", "Beverage Manager"…), and
+the actual **person** is auto-filled from People Center's location settings —
+who holds that position at the site's location
+(`people_center_position_assignments`). Decision (Michael, 2026-08-13).
+
+- Runs automatically after playbook generation, and on demand via **Refresh
+  assignees** on Opening Detail.
+- Role → position: the `opening_role_mappings` alias table first (e.g.
+  "the Chef" → *Chef de Cuisine*), then an exact position-name match.
+- **A hand-picked person always wins** (`assignee_overridden`, same pattern
+  as `date_overridden`): pick a person on the task row to override; clear the
+  field to return the task to auto-fill.
+- **Never guesses**: a role with zero holders, several holders and no single
+  primary, or no matching position is left unfilled and reported for a manual
+  pick. Department/HQ roles (IT, Training, Marketing, Finance) are deliberately
+  unmapped — manual assignment only, per the same decision.
+- A new site fills in as staffing happens: once the GM hire is recorded in
+  People Center, the next refresh assigns their tasks.
+- Completing a task stamps `completed_at` and `completed_by` (the closer's
+  People Center person) server-side; reopening clears both.
 
 ## One-off tasks
 

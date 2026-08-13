@@ -1,7 +1,8 @@
 // One opening task, editable inline. Managers can change status, owner role,
-// due date (which flags a manual override so recalculation leaves it alone),
-// priority/at-risk, and notes. Read-only users see the same information
-// without controls.
+// assigned person (hand-picking flags a manual override so assignee auto-fill
+// leaves it alone; clearing returns the task to auto-fill), due date (which
+// flags a manual override so recalculation leaves it alone), priority/at-risk,
+// and notes. Read-only users see the same information without controls.
 
 import { useState } from 'react'
 import { CheckCircle2, Flag, Lock } from 'lucide-react'
@@ -12,6 +13,7 @@ import {
   TASK_STATUS_LABELS,
   TASK_STATUSES,
   type OpeningTask,
+  type Person,
   type TaskPriority,
   type TaskStatus,
 } from '../../types'
@@ -19,10 +21,12 @@ import {
 export function TaskRow({
   task,
   canManage,
+  people,
   onChange,
 }: {
   task: OpeningTask
   canManage: boolean
+  people: Person[]
   onChange: (patch: Partial<OpeningTask>) => void
 }) {
   const [notesOpen, setNotesOpen] = useState(false)
@@ -89,7 +93,27 @@ export function TaskRow({
               Due {formatDate(task.due_date)}
               {task.due_date ? ` · ${relativeDays(task.due_date)}` : ' · unscheduled'}
             </span>
-            {task.assigned_role && <span>Owner: {task.assigned_role}</span>}
+            {task.assigned_role && (
+              <span>
+                Owner: {task.assigned_role}
+                {task.assigned_person_name ? (
+                  <span className="text-charcoal/80"> — {task.assigned_person_name}</span>
+                ) : (
+                  <span className="text-charcoal/40"> — unassigned</span>
+                )}
+                {task.assignee_overridden && (
+                  <span
+                    className="ml-1 inline-flex items-center gap-0.5 text-charcoal/40"
+                    title="Person picked manually — assignee auto-fill will not change it"
+                  >
+                    <Lock className="h-3 w-3" />
+                  </span>
+                )}
+              </span>
+            )}
+            {!task.assigned_role && task.assigned_person_name && (
+              <span>Owner: {task.assigned_person_name}</span>
+            )}
           </div>
 
           {canManage && (
@@ -147,6 +171,42 @@ export function TaskRow({
                 placeholder="Owner role"
                 className="!w-32 py-1 text-xs"
               />
+              <TextInput
+                key={task.assigned_person_name ?? ''}
+                list={`people-${task.id}`}
+                defaultValue={task.assigned_person_name ?? ''}
+                onBlur={(e) => {
+                  const v = e.target.value.trim()
+                  if (v === (task.assigned_person_name ?? '')) return
+                  if (v === '') {
+                    // Clearing returns the task to auto-fill on the next refresh.
+                    onChange({
+                      assigned_person_id: null,
+                      assigned_person_name: null,
+                      assignee_overridden: false,
+                    })
+                    return
+                  }
+                  const person = people.find(
+                    (p) => p.full_name.toLowerCase() === v.toLowerCase(),
+                  )
+                  // Only roster people can be assigned; unmatched text is not saved.
+                  if (person)
+                    onChange({
+                      assigned_person_id: person.id,
+                      assigned_person_name: person.full_name,
+                      assignee_overridden: true,
+                    })
+                }}
+                placeholder="Person (auto)"
+                className="!w-36 py-1 text-xs"
+                title="Pick a person from the roster (marks a manual override; clear to return to auto-fill)"
+              />
+              <datalist id={`people-${task.id}`}>
+                {people.map((p) => (
+                  <option key={p.id} value={p.full_name} />
+                ))}
+              </datalist>
               <button
                 onClick={() => setNotesOpen((o) => !o)}
                 className="text-xs text-cg-orange hover:underline"

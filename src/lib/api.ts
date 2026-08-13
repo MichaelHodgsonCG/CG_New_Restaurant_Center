@@ -10,6 +10,7 @@ import type {
   OpeningSite,
   OpeningSiteInput,
   OpeningTask,
+  Person,
   Playbook,
   SitePlaybook,
   TaskTemplate,
@@ -221,6 +222,39 @@ export async function createOneOffTask(
     .single()
   if (error) throw error
   return data as OpeningTask
+}
+
+// --- Assignees (People Center alignment) ----------------------------------
+
+/** Active roster for the manual-assignment picker (managers only — the RPC
+ *  returns nothing to anyone else). */
+export async function listPeople(): Promise<Person[]> {
+  const { data, error } = await supabase.rpc('restaurant_center_list_people')
+  if (error) throw error
+  return (data ?? []) as Person[]
+}
+
+export interface AssigneeResolution {
+  role_label: string
+  outcome: 'filled' | 'no_location' | 'no_role_match' | 'no_person' | 'ambiguous'
+  person_name: string | null
+  tasks_updated: number
+}
+
+/**
+ * Auto-fill task assignees from People Center's location settings: each
+ * owner role resolves to the person holding the matching position at the
+ * site's location. Hand-picked assignees (assignee_overridden) are never
+ * touched; unresolvable roles (department roles, no/ambiguous holder) are
+ * left unfilled for a manual pick. Returns one row per role describing
+ * what happened.
+ */
+export async function resolveSiteAssignees(siteId: string): Promise<AssigneeResolution[]> {
+  const { data, error } = await supabase.rpc('restaurant_center_resolve_site_assignees', {
+    p_site_id: siteId,
+  })
+  if (error) throw error
+  return (data ?? []) as AssigneeResolution[]
 }
 
 // --- Template generation -------------------------------------------------
