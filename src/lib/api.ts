@@ -10,9 +10,10 @@ import type {
   OpeningSite,
   OpeningSiteInput,
   OpeningTask,
-  Person,
   Playbook,
+  RosterPerson,
   SitePlaybook,
+  SiteRole,
   TaskTemplate,
 } from '../types'
 
@@ -103,6 +104,7 @@ export async function listTemplates(playbookId: string): Promise<TaskTemplate[]>
     .from('opening_task_templates')
     .select('*')
     .eq('playbook_id', playbookId)
+    .order('sort_order', { nullsFirst: false })
     .order('sequence')
   if (error) throw error
   return (data ?? []) as TaskTemplate[]
@@ -113,7 +115,15 @@ export async function createTemplate(
     Partial<
       Pick<
         TaskTemplate,
-        'description' | 'default_owner_role' | 'required' | 'sequence'
+        | 'description'
+        | 'category'
+        | 'default_owner_role'
+        | 'default_owner_person_id'
+        | 'default_support_role'
+        | 'default_support_person_id'
+        | 'required'
+        | 'sequence'
+        | 'sort_order'
       >
     >,
 ): Promise<TaskTemplate> {
@@ -160,11 +170,13 @@ export async function listSitePlaybooks(siteId: string): Promise<SitePlaybook[]>
 // --- Tasks ---------------------------------------------------------------
 
 export async function listTasks(siteId: string): Promise<OpeningTask[]> {
+  // Board order: manual position within a section, not due date — the board
+  // groups by playbook → category and each section keeps its curated order.
   const { data, error } = await supabase
     .from('opening_tasks')
     .select('*')
     .eq('opening_site_id', siteId)
-    .order('due_date', { ascending: true, nullsFirst: false })
+    .order('sort_order', { nullsFirst: false })
     .order('sequence')
   if (error) throw error
   return (data ?? []) as OpeningTask[]
@@ -200,12 +212,16 @@ export async function createOneOffTask(
       Pick<
         OpeningTask,
         | 'description'
+        | 'category'
+        | 'playbook_id'
+        | 'site_playbook_id'
         | 'anchor_type'
         | 'offset_days'
         | 'due_date'
         | 'assigned_role'
         | 'priority'
         | 'sequence'
+        | 'sort_order'
       >
     >,
 ): Promise<OpeningTask> {
@@ -224,37 +240,42 @@ export async function createOneOffTask(
   return data as OpeningTask
 }
 
-// --- Assignees (People Center alignment) ----------------------------------
-
-/** Active roster for the manual-assignment picker (managers only — the RPC
- *  returns nothing to anyone else). */
-export async function listPeople(): Promise<Person[]> {
-  const { data, error } = await supabase.rpc('restaurant_center_list_people')
+export async function deleteTask(id: string): Promise<void> {
+  const { error } = await supabase.from('opening_tasks').delete().eq('id', id)
   if (error) throw error
-  return (data ?? []) as Person[]
 }
 
-export interface AssigneeResolution {
-  role_label: string
-  outcome: 'filled' | 'no_location' | 'no_role_match' | 'no_person' | 'ambiguous'
-  person_name: string | null
-  tasks_updated: number
+/** Rename a section on a site's board: every task in the (playbook, category)
+ *  pair moves to the new name. Sections have no table of their own — they are
+ *  the distinct category values, so a rename is a bulk update. */
+export async function renameTaskCategory(
+  siteId: string,
+  playbookId: string | null,
+  from: string,
+  to: string,
+): Promise<void> {
+  let q = supabase
+    .from('opening_tasks')
+    .update({ category: to })
+    .eq('opening_site_id', siteId)
+    .eq('category', from)
+  q = playbookId === null ? q.is('playbook_id', null) : q.eq('playbook_id', playbookId)
+  const { error } = await q
+  if (error) throw error
 }
 
-/**
- * Auto-fill task assignees from People Center's location settings: each
- * owner role resolves to the person holding the matching position at the
- * site's location. Hand-picked assignees (assignee_overridden) are never
- * touched; unresolvable roles (department roles, no/ambiguous holder) are
- * left unfilled for a manual pick. Returns one row per role describing
- * what happened.
- */
-export async function resolveSiteAssignees(siteId: string): Promise<AssigneeResolution[]> {
-  const { data, error } = await supabase.rpc('restaurant_center_resolve_site_assignees', {
-    p_site_id: siteId,
-  })
+/** Same rename for the template library, scoped to one playbook. */
+export async function renameTemplateCategory(
+  playbookId: string,
+  from: string,
+  to: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('opening_task_templates')
+    .update({ category: to })
+    .eq('playbook_id', playbookId)
+    .eq('category', from)
   if (error) throw error
-  return (data ?? []) as AssigneeResolution[]
 }
 
 // --- Template generation -------------------------------------------------
@@ -320,13 +341,18 @@ export async function addPlaybookToSite(
       task_template_id: t.id,
       title: t.title,
       description: t.description,
+      category: t.category,
       anchor_type: t.anchor_type,
       offset_days: t.offset_days,
       due_date: computeDueDate(site, t.anchor_type, t.offset_days),
       date_overridden: false,
       assigned_role: t.default_owner_role,
+      assigned_person_id: t.default_owner_person_id,
+      support_role: t.default_support_role,
+      support_person_id: t.default_support_person_id,
       priority: t.required ? 'high' : 'normal',
       sequence: t.sequence,
+      sort_order: t.sort_order ?? t.sequence,
     }))
 
   if (rows.length > 0) {
@@ -379,6 +405,93 @@ export async function recalculateDueDates(site: OpeningSite): Promise<RecalcResu
     }
   }
   return { updated, preserved, unscheduled }
+}
+
+// --- People & role assignments -------------------------------------------
+
+interface PeopleViewRow {
+  id: string
+  full_name: string | null
+  preferred_name: string | null
+  person_kind: string | null
+  is_head_office: boolean | null
+  photo_url: string | null
+}
+
+/** Picker display name: keep the preferred first name but include the surname
+ *  so people stay distinguishable ("Mike" + "Michael Hodgson" → "Mike
+ *  Hodgson"). Falls back to whichever name is present. */
+function personDisplayName(preferred: string, full: string): string {
+  const p = preferred.trim()
+  const f = full.trim()
+  if (!p) return f
+  if (!f) return p
+  const lastName = f.split(/\s+/).slice(-1)[0]
+  return p.toLowerCase().includes(lastName.toLowerCase()) ? p : `${p} ${lastName}`
+}
+
+/** People available in the owner/support/role pickers, from the
+ *  restaurant_center_people view (readable by every authenticated user;
+ *  exposes only picker fields). Sorted by display name. */
+export async function listPeople(): Promise<RosterPerson[]> {
+  const { data, error } = await supabase
+    .from('restaurant_center_people')
+    .select('id, full_name, preferred_name, person_kind, is_head_office, photo_url')
+  if (error) throw error
+  return ((data ?? []) as PeopleViewRow[])
+    .map((p) => ({
+      id: p.id,
+      name: personDisplayName(p.preferred_name ?? '', p.full_name ?? ''),
+      role: p.is_head_office
+        ? 'Head Office'
+        : p.person_kind === 'emerging_leader'
+          ? 'Emerging Leader'
+          : 'Manager',
+      photo_url: p.photo_url,
+    }))
+    .filter((p) => p.name.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export async function listSiteRoles(siteId: string): Promise<SiteRole[]> {
+  const { data, error } = await supabase
+    .from('opening_site_roles')
+    .select('*')
+    .eq('opening_site_id', siteId)
+    .order('role_key')
+  if (error) throw error
+  return (data ?? []) as SiteRole[]
+}
+
+/** Role assignments across every site — for the cross-site My Tasks view. */
+export async function listAllSiteRoles(): Promise<SiteRole[]> {
+  const { data, error } = await supabase.from('opening_site_roles').select('*')
+  if (error) throw error
+  return (data ?? []) as SiteRole[]
+}
+
+/** Assign (or clear) the person holding a role on a site. Upserts on the
+ *  (site, role) unique key so the Team panel is a single-action write. */
+export async function assignSiteRole(
+  siteId: string,
+  roleKey: string,
+  person: { id: string | null; name: string | null },
+): Promise<SiteRole> {
+  const { data, error } = await supabase
+    .from('opening_site_roles')
+    .upsert(
+      {
+        opening_site_id: siteId,
+        role_key: roleKey,
+        person_id: person.id,
+        person_name: person.name,
+      },
+      { onConflict: 'opening_site_id,role_key' },
+    )
+    .select('*')
+    .single()
+  if (error) throw error
+  return data as SiteRole
 }
 
 // --- Platform feedback ---------------------------------------------------

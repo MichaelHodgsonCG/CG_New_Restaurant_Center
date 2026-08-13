@@ -14,18 +14,20 @@ import {
   ListChecks,
   LogOut,
   ShieldAlert,
+  UserCheck,
   type LucideIcon,
 } from 'lucide-react'
 import { signOut } from '../features/auth/useSession'
 import type { Profile } from '../types'
 import monogram from '../assets/CG Logo Small.png'
 
-export type View = 'dashboard' | 'sites' | 'playbooks' | 'readiness'
+export type View = 'dashboard' | 'sites' | 'mytasks' | 'playbooks' | 'readiness'
 
 const NAV: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { view: 'sites', label: 'Opening Sites', icon: Building2 },
-  { view: 'playbooks', label: 'Playbooks', icon: BookOpen },
+  { view: 'mytasks', label: 'My Tasks', icon: UserCheck },
+  { view: 'playbooks', label: 'Playbook Editor', icon: BookOpen },
   { view: 'readiness', label: 'Readiness', icon: ListChecks },
 ]
 
