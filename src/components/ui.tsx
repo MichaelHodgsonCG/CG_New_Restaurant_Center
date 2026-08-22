@@ -2,7 +2,9 @@
 // tokens. Kept here so every view reads the same and colour usage stays
 // semantic (orange = action/active only; status colours communicate state).
 
+import { useState } from 'react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
 import {
   SITE_STATUS_LABELS,
   TASK_STATUS_LABELS,
@@ -53,6 +55,49 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
     >
       {children}
     </div>
+  )
+}
+
+/** A Card whose body folds behind its header. The whole header row toggles;
+ *  `summary` gives a one-line peek while collapsed and `extra` keeps an
+ *  action (e.g. Auto-fill) reachable in either state. */
+export function CollapsibleCard({
+  title,
+  summary,
+  extra,
+  defaultOpen = false,
+  children,
+}: {
+  title: string
+  summary?: ReactNode
+  extra?: ReactNode
+  defaultOpen?: boolean
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-2 px-4 py-3">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <ChevronRight
+            className={`h-4 w-4 shrink-0 text-charcoal/40 transition-transform ${
+              open ? 'rotate-90' : ''
+            }`}
+          />
+          <span className="shrink-0 text-sm font-semibold text-charcoal">{title}</span>
+          {!open && summary && (
+            <span className="min-w-0 truncate text-xs text-charcoal/45">{summary}</span>
+          )}
+        </button>
+        {extra}
+      </div>
+      {open && <div className="px-4 pb-4">{children}</div>}
+    </Card>
   )
 }
 

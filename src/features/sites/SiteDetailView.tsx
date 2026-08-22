@@ -59,7 +59,7 @@ import {
 import {
   Badge,
   Button,
-  Card,
+  CollapsibleCard,
   EmptyState,
   Field,
   Metric,
@@ -574,9 +574,13 @@ export function SiteDetailView({
         {/* Site context in one compact row so the task board below gets the
             full page width. */}
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
-          <Card className="p-4">
-              <h2 className="text-sm font-semibold text-charcoal">Construction milestones</h2>
-              <p className="mt-0.5 text-xs text-charcoal/50">
+          <CollapsibleCard
+            title="Construction milestones"
+            summary={`Handover ${formatDate(site.handover_date)} · ${
+              HANDOVER_STATUS_LABELS[site.handover_status]
+            }`}
+          >
+              <p className="text-xs text-charcoal/50">
                 Reference only — construction is managed outside this system.
               </p>
               <dl className="mt-3 space-y-2 text-sm">
@@ -611,7 +615,7 @@ export function SiteDetailView({
                   </a>
                 )}
               </dl>
-          </Card>
+          </CollapsibleCard>
 
           <TeamPanel
             siteId={siteId}
@@ -631,12 +635,11 @@ export function SiteDetailView({
           />
 
           {site.notes && (
-            <Card className="p-4">
-              <h2 className="text-sm font-semibold text-charcoal">Notes</h2>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-charcoal/75">
+            <CollapsibleCard title="Notes" summary={site.notes}>
+              <p className="whitespace-pre-wrap text-sm text-charcoal/75">
                 {site.notes}
               </p>
-            </Card>
+            </CollapsibleCard>
           )}
         </div>
 

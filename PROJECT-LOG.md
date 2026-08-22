@@ -1,5 +1,12 @@
 # PROJECT-LOG — CG New Restaurant Center
 
+[2026-08-22] Collapse site-context cards by default
+Shipped:   Construction milestones, Team, and Notes on Opening Detail now fold behind their headers, collapsed by default, so the task board is immediately in view. Each collapsed header shows a one-line peek (handover date + status; roles assigned count; first line of notes) and the Team card's Auto-fill button stays reachable while collapsed. New shared CollapsibleCard primitive in components/ui. Build passes. Merged to main.
+Roadmap:   Opening Detail polish -> complete
+Decisions: Collapsed is a fresh default on each page load (no persistence) — simplest behavior matching the ask; revisit if Michael wants sticky state.
+Blockers:  none
+Next:      My Day resolver RPC remains the next UTL remediation item; Michael still to link the five new locations in People Center.
+
 [2026-08-13] Merged to main; auto-fill re-targeted at the Team panel
 Shipped:   Merged main's Menu Center task format line (Team panel, dynamic owner/support resolution, My Tasks, playbook sync) into this branch and reconciled today's auto-fill with it: the People Center auto-fill now fills opening_site_roles (an Auto-fill action on the Team panel) instead of backfilling task rows. Hand-picked Team assignments carry autofilled=false and are never overwritten; unresolvable roles are reported, never guessed; a person who leaves a position is cleared, not left stale. Migration 20260813170000 applied live: drops the superseded task-row objects (columns verified empty first), restores the phase-2 profile RPC that this afternoon's migration had overwritten (display-name fallback regression — caught and fixed live), keeps the alias table, owner index, and completed_by stamping. Verified the 3 existing manual Team picks at Beertown Peterborough are protected. Build passes. Merged to main and pushed.
 Roadmap:   UTL remediation — person assignment -> complete (task-format model + PC auto-fill); My Day resolver + deep links + required-badge fix -> planned

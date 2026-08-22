@@ -10,7 +10,7 @@
 
 import { useMemo } from 'react'
 import { Sparkles } from 'lucide-react'
-import { Card } from '../../components/ui'
+import { CollapsibleCard } from '../../components/ui'
 import { PersonPicker } from '../../components/PersonPicker'
 import { assignSiteRole } from '../../lib/api'
 import type { OpeningTask, RosterPerson, SiteRole } from '../../types'
@@ -75,22 +75,32 @@ export function TeamPanel({
     }
   }
 
+  const assignedCount = roleRows.filter(
+    (r) => r.assignment && (r.assignment.person_id || r.assignment.person_name),
+  ).length
+
   return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between gap-2">
-        <h2 className="text-sm font-semibold text-charcoal">Team</h2>
-        {canManage && (
+    <CollapsibleCard
+      title="Team"
+      summary={
+        roleRows.length === 0
+          ? 'No roles yet'
+          : `${assignedCount}/${roleRows.length} role${roleRows.length === 1 ? '' : 's'} assigned`
+      }
+      extra={
+        canManage ? (
           <button
             onClick={onAutofill}
             disabled={busy}
             title="Fill each role with the person holding that position at this location in People Center. Roles you assigned by hand are never changed."
-            className="inline-flex items-center gap-1 text-xs font-medium text-cg-orange hover:underline disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-cg-orange hover:underline disabled:opacity-50"
           >
             <Sparkles className="h-3.5 w-3.5" /> Auto-fill
           </button>
-        )}
-      </div>
-      <p className="mt-0.5 text-xs text-charcoal/55">
+        ) : undefined
+      }
+    >
+      <p className="text-xs text-charcoal/55">
         Assign a person to each role — every task owned by that role resolves
         to them, including in My Tasks. People are owned by People Center.
       </p>
@@ -126,6 +136,6 @@ export function TeamPanel({
           ))}
         </ul>
       )}
-    </Card>
+    </CollapsibleCard>
   )
 }
