@@ -1,5 +1,12 @@
 # PROJECT-LOG — CG New Restaurant Center
 
+[2026-08-22] Repo caught up — default branch fast-forwarded to main
+Shipped:   Nothing new built. Verified the working tree is clean and every change is committed and pushed. The "large diff" Michael saw was the GitHub default branch (claude/restaurant-center-foundation-e3s9n4) sitting at July 30 — fast-forwarded it to main (6c17c81), so the repo homepage and compares now show current code. Verified branch containment: foundation and menu-format branches are strict ancestors of main; the global-feedback-widget branch's one commit is the pre-squash copy of PR #2, whose content is already in main.
+Roadmap:   Repo hygiene -> complete
+Decisions: Did not delete the two stale feature branches — harmless, and deletion is Michael's call.
+Blockers:  none
+Next:      Recommend setting main as the GitHub default branch (Settings → Branches) so future compares are against main; optionally delete the two stale branches.
+
 [2026-08-22] Collapse site-context cards by default
 Shipped:   Construction milestones, Team, and Notes on Opening Detail now fold behind their headers, collapsed by default, so the task board is immediately in view. Each collapsed header shows a one-line peek (handover date + status; roles assigned count; first line of notes) and the Team card's Auto-fill button stays reachable while collapsed. New shared CollapsibleCard primitive in components/ui. Build passes. Merged to main.
 Roadmap:   Opening Detail polish -> complete
