@@ -139,6 +139,7 @@ export function SiteDetailView({
       ])
       let t = initialTasks
       let asg = initialAssignments
+      let rlsRows = rls
 
       // Every location needs every playbook — and every template. Sweep ALL
       // active playbooks through the idempotent generator, not just
@@ -167,12 +168,25 @@ export function SiteDetailView({
         }
       }
 
+      // Keep the Team panel aligned with People Center without a manual
+      // step: refresh auto-filled role assignments on every managed load.
+      // Hand-picked rows are never touched; a failure here is non-fatal
+      // (the Auto-fill button remains as the manual path).
+      if (s && canManage && GENERATING_STATUSES.has(s.status)) {
+        try {
+          await autofillSiteRoles(siteId)
+          rlsRows = await listSiteRoles(siteId)
+        } catch {
+          /* non-fatal */
+        }
+      }
+
       setSite(s)
       setTasks(sortByPosition(t))
       setPlaybooks(pbs)
       setAssignments(asg)
       setPeople(ppl)
-      setRoles(rls)
+      setRoles(rlsRows)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the site.')
     } finally {

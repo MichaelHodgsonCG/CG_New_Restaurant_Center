@@ -60,12 +60,17 @@ which itself resolves several findings.
 3. Stamp `completed_by` on closure — **done** (server-side trigger; reopening
    clears it). Adding `dropped` to the status set — still open.
 4. ~~Index `assigned_person_id`~~ — **done**.
-5. `resolve_my_restaurant_tasks()` RPC for the CGOPS My Day rollup — **open**
-   (an in-app My Tasks view now exists on main; the cross-app resolver must
-   mirror its dynamic resolution: per-task override → site role → nothing,
-   statuses mapped to the canonical vocabulary, owner + support).
-6. A minimal one-shot `?view=` launch intent (SSO-safe, query-string) despite
-   the no-router convention — **open**.
+5. ~~Cross-center resolver~~ — **done as a count, per UTL v3 §5.3**
+   (2026-08-29): `resolve_my_nrc_counts()` returns `due_count` (my at-risk /
+   blocked / overdue tasks on active openings — the exception tier, not all
+   outstanding), `next_due_date`, and `deep_link='?view=my-tasks'`. Mirrors
+   the app's own resolution chain (per-task override → Team-panel role
+   assignment → role text naming me), owner + support, statuses mapped at
+   the boundary, empty-not-error. Task rows never cross to CGOPS (Michael's
+   2026-08-24 ruling).
+6. ~~A minimal one-shot `?view=` launch intent~~ — **done** (2026-08-29):
+   `?view=my-tasks` lands on the My Tasks view, consumed once and stripped;
+   query string only, fragment untouched.
 7. Stop overloading priority: carry `required` on the task row (or join to the
    template) and let priority be its own axis — **open**.
 8. ~~Allow an assignee to update status on their own task~~ — **closed as not

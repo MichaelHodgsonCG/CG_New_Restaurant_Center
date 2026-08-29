@@ -13,11 +13,32 @@ import { ReadinessView } from './features/readiness/ReadinessView'
 import { can, toPermissionUser } from './permissions'
 
 // Top-level view + selected-site state lives here (house convention — no
-// router library; the platform apps keep navigation state in App until a
-// deep-linking need appears).
+// router library). The one deep link is the CGOPS launch intent
+// ?view=my-tasks (UTL v3 §5.4): consumed once on mount, then stripped so
+// refreshes behave normally. Query string only — the #cgops_sso handoff
+// owns the fragment.
+function consumeViewIntent(): View {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('view') === 'my-tasks') {
+      params.delete('view')
+      const rest = params.toString()
+      window.history.replaceState(
+        null,
+        '',
+        window.location.pathname + (rest ? `?${rest}` : '') + window.location.hash,
+      )
+      return 'mytasks'
+    }
+  } catch {
+    /* malformed URL — fall through to the default view */
+  }
+  return 'dashboard'
+}
+
 export default function App() {
   const { session, profile, profileError, loading } = useSession()
-  const [view, setView] = useState<View>('dashboard')
+  const [view, setView] = useState<View>(consumeViewIntent)
   const [siteId, setSiteId] = useState<string | null>(null)
   const [startCreating, setStartCreating] = useState(false)
 
